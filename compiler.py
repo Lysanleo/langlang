@@ -94,18 +94,141 @@ class Compiler:
     ############################################################################
     # Select Instructions
     ############################################################################
+    
+    regs = ['rsp', 'rbp', 'rax', 'rbx'
+           , 'rcx', 'rdx', 'rsi', 'rdi'
+           , 'r8', 'r9', 'r10', 'r11'
+           , 'r12', 'r13', 'r14', 'r15']
 
     def select_arg(self, e: expr) -> arg:
-        # YOUR CODE HERE
-        pass        
+        match e:
+            case Constant(x):
+                return Immediate(x)
+            case Reg(_):
+                return e
+
+    def select_instr(self, e: expr) -> List[instr]:
+        # Patch, don't know if dangerous
+        select_arg = self.select_arg
+        instrs:List[instr] = []
+        match e:
+            case Call(Name('print'), [atm]):
+                instrs.append(Instr('movq', [select_arg(atm), select_arg(Reg('rdi'))]))
+                instrs.append(Callq('print_int', 1))
+                return instrs
+            case Call(Name('input_int'), []):
+                instrs.append(Callq('read_int', 0))
+                return instrs
+
+    def assign_helper(self, target:str, e: expr) -> List[instr]:
+        # Patch, don't know if dangerous
+        select_arg = self.select_arg
+        instrs:List[instr] = []
+        match e:
+            # Add-Op
+            # var = atm + var
+            case ( BinOp(Name(x) as var1, Add(), Constant(y) as atm1)
+                 | BinOp(Constant(y) as atm1, Add(), Name(x) as var1) ):
+                if x == target:
+                    return [Instr('addq', [select_arg(atm1), var1])]
+                # TODO
+                instrs = instrs + [Instr('movq', [var1, Name(target)])]
+                instrs = instrs + [Instr('addq', [select_arg(atm1), Name(target)])]
+                return instrs
+            # var = atm1 + atm2
+            case BinOp(Constant(x) as atm1, Add(), Constant(y) as atm2):
+                instrs = instrs + [Instr('movq', [select_arg(atm1), Name(target)])]
+                instrs = instrs + [Instr('addq', [select_arg(atm2), Name(target)])]
+                return instrs
+            # var = var1 + var2
+            case BinOp(Name(x) as var1, Add(), Name(y) as var2):
+                if x == target:
+                    return [Instr('addq', [var2, var1])]
+                if y == target:
+                    return [Instr('addq', [var1, var2])]
+                instrs = instrs + [Instr('movq', [var1, Name(target)])]
+                instrs = instrs + [Instr('addq', [var2, Name(target)])]
+                return instrs
+                
+            # Sub-Op 
+            # var = var1 - atm1
+            # ! This can write in one case and replace with a sub-pattern-match
+            case BinOp(Name(x) as var1, Sub(), Constant(y) as atm1):
+                if x == target:
+                    return [Instr('subq', [select_arg(atm1), var1])]
+                instrs = instrs + [Instr('movq', [var1, Name(target)])]
+                instrs = instrs + [Instr('subq', [select_arg(atm1), Name(target)])]
+                return instrs
+            # var = atm1 - var1
+            case BinOp(Constant(y) as atm1, Sub(), Name(x) as var1):
+                # TODO
+                instrs = instrs + [Instr('movq', [select_arg(atm1), Name(target)])]
+                instrs = instrs + [Instr('subq', [var1, Name(target)])]
+                return instrs
+            # var = atm1 - atm2
+            case BinOp(Constant(x) as atm1, Sub(), Constant(y) as atm2):
+                instrs = instrs + [Instr('movq', [select_arg(atm1), Name(target)])]
+                instrs = instrs + [Instr('subq', [select_arg(atm2), Name(target)])]
+                return instrs
+            # var = var1 - var2
+            case BinOp(Name(x) as var1, Sub(), Name(y) as var2):
+                if x == target:
+                    return [Instr('subq', [var2, var1])]
+                instrs = instrs + [Instr('movq', [var1, Name(target)])]
+                instrs = instrs + [Instr('subq', [var2, Name(target)])]
+                return instrs
+
+            # Neg-Op
+            case UnaryOp(USub(), atm1):
+                match atm1:
+                    case Constant(_):
+                        instrs = instrs + [Instr('movq', [select_arg(atm1)
+                                                         , Name(target)])]
+                        instrs = instrs + [Instr('negq', [Name(target)])]
+                        return instrs
+                    case Name(var):
+                        if var == target:
+                            return [Instr('negq', [atm1])]
+                        instrs = instrs + [Instr('movq', [atm1, Name(target)])]
+                        instrs = instrs + [Instr('negq', [Name(target)])]
+                        return instrs
+            # var = Constant 
+            case Constant(value) as atm1:
+                instrs = instrs + [Instr('movq', [select_arg(atm1), Name(target)])]
+                return instrs
+            # var = var
+            case Name(var) as atm1:
+                instrs = instrs + [Instr('movq', [atm1, Name(target)])]
+                return instrs
+            case Call(Name('input_int'), []):
+                instrs = self.select_instr(e)
+                instrs = instrs + [Instr('movq', [select_arg(Reg('rax'))
+                                                 , Name(target)])]
+                return instrs
 
     def select_stmt(self, s: stmt) -> List[instr]:
-        # YOUR CODE HERE
-        pass        
+        # Patch, don't know if dangerous
+        select_instr = self.select_instr
+        match s:
+            # Match call function
+            case Expr(Call(Name(funcname), [args]) as expr):
+                return select_instr(expr)
+            case Expr(expr):
+                #TODO
+                return select_instr(expr)
+            case Assign([Name(var)], expr):
+                return self.assign_helper(var, expr)
+                
 
-    # def select_instructions(self, p: Module) -> X86Program:
-    #     # YOUR CODE HERE
-    #     pass        
+    def select_instructions(self, p: Module) -> X86Program:
+        match p:
+            case Module(body):
+                new_body = []
+                new_body_temp = [self.select_stmt(stmt) for stmt in body]
+                for stmts in new_body_temp:
+                    new_body = new_body + stmts
+                print(new_body)
+                return X86Program(new_body)
 
     ############################################################################
     # Assign Homes
