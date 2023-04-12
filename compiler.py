@@ -242,8 +242,13 @@ class Compiler:
                 new_body_temp = [self.select_stmt(stmt) for stmt in body]
                 for stmts in new_body_temp:
                     new_body = new_body + stmts
+                print("select_instruciton PASS:")
                 print(X86Program(new_body))
                 new_body = self.assign_homes_instrs(new_body, {})
+                print("assign_homes PASS:")
+                print(X86Program(new_body))
+                new_body = self.patch_instrs(new_body)
+                print("patch_instructions PASS:")
                 print(X86Program(new_body))
                 return X86Program(new_body)
 
@@ -300,22 +305,58 @@ class Compiler:
     ############################################################################
 
     def patch_instr(self, i: instr) -> List[instr]:
-        # YOUR CODE HERE
-        pass        
+        instrs = []
+        match i:
+            case Instr(cmd, [arg1, arg2]) if cmd in self.instrs_two:
+                match (arg1, arg2):
+                    case (Deref(_), Deref(_)):
+                        instrs.append(Instr('movq', [arg1, Reg('rax')]))
+                        instrs.append(Instr(cmd, [Reg('rax'), arg2]))
+                    case (Immediate(x), _):
+                        if (x > 2**16):
+                            instrs.append(Instr('movq', [arg1, Reg('rax')]))
+                            instrs.append(Instr(cmd, [Reg('rax'), arg2]))
+                        else:
+                            instrs.append(i)
+                    case _:
+                        instrs.append(i)
+                return instrs
+            case Instr(cmd, [arg1]) if cmd in self.instrs_one:
+                match arg1:
+                    case Immediate(x):
+                        if (x > 2**16):
+                            instrs.append(Instr('movq', [arg1, Reg('rax')]))
+                            instrs.append(Instr(cmd, [Reg('rax')]))
+                        else:
+                            instrs.append(i)
+                    case _:
+                        instrs.append(i)
+                return instrs
+            case _:
+                return [i]
+                
+                        
 
     def patch_instrs(self, ss: List[instr]) -> List[instr]:
-        # YOUR CODE HERE
-        pass        
+        ss = [self.patch_instr(i) for i in ss]
+        print(ss)
+        ss = [i for ins in ss for i in ins]
+        return ss
 
     def patch_instructions(self, p: X86Program) -> X86Program:
-        # YOUR CODE HERE
-        pass        
+        match p:
+            case X86Program(body):
+                new_body = self.patch_instrs(body)
+                return X86Program(new_body)
 
     ############################################################################
     # Prelude & Conclusion
     ############################################################################
 
-    # def prelude_and_conclusion(self, p: X86Program) -> X86Program:
-    #     # YOUR CODE HERE
-    #     pass        
+    def prelude_and_conclusion(self, p: X86Program) -> X86Program:
+        match p:
+            case X86Program(body):
+                new_body = self.patch_instrs(body)
+                new_body.append(Retq())
+                return X86Program(new_body)
 
