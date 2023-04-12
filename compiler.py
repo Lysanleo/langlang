@@ -26,13 +26,15 @@ class Compiler:
             case Constant(value):
                 return (e, [])
             case Name(id):
-                return (e, [(e, e)])
+                # return (e, [(e, e)])
+                return (e, [])
             case BinOp(latm, Add(), ratm):
                 atm1 = self.rco_exp(latm, True)
                 atm2 = self.rco_exp(ratm, True)
                 new_expr = BinOp(atm1[0], Add(), atm2[0])
                 new_bindings = atm1[1] + atm2[1]
-                print(new_bindings)
+                # print("In BinOp Case:")
+                # print(new_bindings)
                 if need_atomic:
                     new_sym = generate_name("tmp")
                     return (Name(new_sym), new_bindings + [(Name(new_sym), new_expr)])
@@ -74,7 +76,9 @@ class Compiler:
                 return new_exprs
             case Assign([Name(var)], exp):
                 rcotp = self.rco_exp(exp, False)
+                print(rcotp)
                 new_exprs = self.rco_flat(rcotp)
+                print(new_exprs)
                 new_exprs.append(Assign([Name(var)], rcotp[0]))
                 return new_exprs
 
@@ -105,6 +109,8 @@ class Compiler:
             case Constant(x):
                 return Immediate(x)
             case Reg(_):
+                return e
+            case Name(_):
                 return e
 
     def select_instr(self, e: expr) -> List[instr]:
@@ -212,12 +218,21 @@ class Compiler:
         match s:
             # Match call function
             case Expr(Call(Name(funcname), [args]) as expr):
-                return select_instr(expr)
+                instrs = select_instr(expr)
+                print(stmt)
+                print(instrs)
+                return instrs
             case Expr(expr):
                 #TODO
-                return select_instr(expr)
+                instrs = select_instr(expr)
+                print(stmt)
+                print(instrs)
+                return instrs
             case Assign([Name(var)], expr):
-                return self.assign_helper(var, expr)
+                instrs = self.assign_helper(var, expr)
+                print(stmt)
+                print(instrs)
+                return instrs
                 
 
     def select_instructions(self, p: Module) -> X86Program:
@@ -227,30 +242,58 @@ class Compiler:
                 new_body_temp = [self.select_stmt(stmt) for stmt in body]
                 for stmts in new_body_temp:
                     new_body = new_body + stmts
-                print(new_body)
+                print(X86Program(new_body))
+                new_body = self.assign_homes_instrs(new_body, {})
+                print(X86Program(new_body))
                 return X86Program(new_body)
 
     ############################################################################
     # Assign Homes
     ############################################################################
 
+    instrs_two = ['addq', 'subq', 'movq']
+    instrs_one = ['negq', 'pushq', 'popq']
+
+    def calculate_offset(self, home: Dict[Variable, arg]) -> int:
+        min = 0
+        for (_, arg) in home.items():
+            match arg:
+                case Deref(_, x):
+                    if x < min:
+                        min = x
+        return min-8
+
     def assign_homes_arg(self, a: arg, home: Dict[Variable, arg]) -> arg:
-        # YOUR CODE HERE
-        pass        
+        match a:
+            case Name(var): # Use Deref(reg, int)
+                if var in home:
+                    return home[var]
+                else:
+                    home[var] = Deref('rbp', self.calculate_offset(home))
+                    return home[var]
+            case _:   # Immediate/Reg
+                return a
 
     def assign_homes_instr(self, i: instr,
                            home: Dict[Variable, arg]) -> instr:
-        # YOUR CODE HERE
-        pass        
+        match i:
+            case Instr(cmd, [arg1, arg2]) if cmd in self.instrs_two:
+                return Instr(cmd, [self.assign_homes_arg(arg1, home), self.assign_homes_arg(arg2, home)])
+            case Instr(cmd, [arg1]) if cmd in self.instrs_one:
+                return Instr(cmd, [self.assign_homes_arg(arg1, home)])
+            case _:
+                return i
 
     def assign_homes_instrs(self, ss: List[instr],
                             home: Dict[Variable, arg]) -> List[instr]:
-        # YOUR CODE HERE
-        pass        
+        ss = [self.assign_homes_instr(i, home) for i in ss]
+        return ss
 
-    # def assign_homes(self, p: X86Program) -> X86Program:
-    #     # YOUR CODE HERE
-    #     pass        
+    def assign_homes(self, p: X86Program) -> X86Program:
+        match p:
+            case X86Program(body):
+                new_body = self.assign_homes_instrs(body, {})
+                return X86Program(new_body)
 
     ############################################################################
     # Patch Instructions
@@ -264,9 +307,9 @@ class Compiler:
         # YOUR CODE HERE
         pass        
 
-    # def patch_instructions(self, p: X86Program) -> X86Program:
-    #     # YOUR CODE HERE
-    #     pass        
+    def patch_instructions(self, p: X86Program) -> X86Program:
+        # YOUR CODE HERE
+        pass        
 
     ############################################################################
     # Prelude & Conclusion
