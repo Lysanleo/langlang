@@ -2,8 +2,10 @@ import ast
 from ast import *
 from utils import *
 from x86_ast import *
+# from interp_x86.x86exp import Retq
 import os
 from typing import List, Tuple, Set, Dict
+import math
 
 Binding = Tuple[Name, expr]
 Temporaries = List[Binding]
@@ -17,7 +19,7 @@ class Compiler:
 
     def rco_flat(self, rcolist: Tuple[expr, Temporaries]) -> List[stmt]:
         stmts = [Assign([atmtp[0]], atmtp[1]) for atmtp in rcolist[1]]
-        print(stmts)
+        # print(stmts)
         return stmts
 
     def rco_exp(self, e: expr, need_atomic: bool) -> Tuple[expr, Temporaries]:
@@ -219,19 +221,19 @@ class Compiler:
             # Match call function
             case Expr(Call(Name(funcname), [args]) as expr):
                 instrs = select_instr(expr)
-                print(stmt)
-                print(instrs)
+                # print(stmt)
+                # print(instrs)
                 return instrs
             case Expr(expr):
                 #TODO
                 instrs = select_instr(expr)
-                print(stmt)
-                print(instrs)
+                # print(stmt)
+                # print(instrs)
                 return instrs
             case Assign([Name(var)], expr):
                 instrs = self.assign_helper(var, expr)
-                print(stmt)
-                print(instrs)
+                # print(stmt)
+                # print(instrs)
                 return instrs
                 
 
@@ -295,10 +297,14 @@ class Compiler:
         return ss
 
     def assign_homes(self, p: X86Program) -> X86Program:
+        home = {}
         match p:
             case X86Program(body):
-                new_body = self.assign_homes_instrs(body, {})
-                return X86Program(new_body)
+                new_body = self.assign_homes_instrs(body, home)
+                x86prog = X86Program(new_body)
+                stack_space = math.ceil(abs(self.calculate_offset(home)) / 16) * 16
+                x86prog.stack_space = stack_space
+                return x86prog
 
     ############################################################################
     # Patch Instructions
@@ -339,7 +345,7 @@ class Compiler:
 
     def patch_instrs(self, ss: List[instr]) -> List[instr]:
         ss = [self.patch_instr(i) for i in ss]
-        print(ss)
+        # print(ss)
         ss = [i for ins in ss for i in ins]
         return ss
 
@@ -347,7 +353,9 @@ class Compiler:
         match p:
             case X86Program(body):
                 new_body = self.patch_instrs(body)
-                return X86Program(new_body)
+                x86prog = X86Program(new_body)
+                x86prog.stack_space = p.stack_space
+                return x86prog
 
     ############################################################################
     # Prelude & Conclusion
@@ -356,7 +364,14 @@ class Compiler:
     def prelude_and_conclusion(self, p: X86Program) -> X86Program:
         match p:
             case X86Program(body):
-                new_body = self.patch_instrs(body)
+                new_body = body
+                # Prelude
+                new_body = [Instr('pushq', [Reg('rbp')])
+                           , Instr('movq', [Reg('rsp'), Reg('rbp')])
+                           , Instr('subq', [Immediate(p.stack_space), Reg('rsp')])] + new_body
+                # Conclusion
+                new_body.append(Instr('addq', [Immediate(p.stack_space), Reg('rsp')]))
+                new_body.append(Instr('popq', [Reg('rbp')]))
                 new_body.append(Retq())
-                return X86Program(new_body)
+                return X86Program({'main':new_body})
 

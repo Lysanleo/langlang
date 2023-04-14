@@ -11,6 +11,9 @@ from utils import dedent, indent, indent_stmt, label_name
 class X86Program:
     body: dict[str, list[instr]] | list[instr]
 
+    # def __init__(self):
+    #     self.stack_space = 0
+
     def __str__(self):
         result = ''
         if isinstance(self.body, dict):
