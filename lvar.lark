@@ -1,0 +1,26 @@
+DIGIT: /[0-9]/
+INT: "-"? DIGIT+
+NEWLINE: (/\r/? /\r/)+
+VARNAME: /[a-zA-Z][a-zA-Z0-9]*/
+
+%import common.WS
+%ignore WS
+
+exp: exp "+" exp_hi                 -> add 
+   | exp "-" exp_hi                 -> sub 
+   | exp_hi
+   
+exp_hi: INT                         -> int 
+      | "input_int" "(" ")"         -> input_int 
+      | "-" exp_hi                  -> usub 
+      | "(" exp ")"                 -> paren 
+      | VARNAME
+
+stmt: "print" "(" exp ")"           -> print 
+    | VARNAME "=" exp               -> assign
+    | exp                           -> expr 
+    
+stmt_list:                          -> empty_stmt 
+         | stmt NEWLINE stmt_list   -> add_stmt 
+
+lang_var: stmt_list                 -> module
