@@ -59,6 +59,10 @@ class Compiler:
                     return (Name(new_sym), new_bindings + [(Name(new_sym), new_expr)])
                 return (new_expr, new_bindings)
             case Call(Name('input_int'), []):
+                new_expr = e
+                if need_atomic:
+                    new_sym = generate_name("tmp")
+                    return (Name(new_sym), [(Name(new_sym), new_expr)])
                 return (e, [])
 
     def rco_stmt(self, s: stmt) -> List[stmt]:
