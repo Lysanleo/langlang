@@ -1,6 +1,6 @@
 DIGIT: /[0-9]/
-INT: "-"? DIGIT+
-NEWLINE: (/\r/? /\r/)+
+INT: DIGIT+             // Not " INT: "-"? DIGIT+ "
+NEWLINE: (/\r/? /\n/)+
 VARNAME: /[a-zA-Z][a-zA-Z0-9]*/
 
 %import common.WS
@@ -8,19 +8,23 @@ VARNAME: /[a-zA-Z][a-zA-Z0-9]*/
 
 exp: exp "+" exp_hi                 -> add 
    | exp "-" exp_hi                 -> sub 
-   | exp_hi
+   | exp_hi                          
+   | var_name                    
    
 exp_hi: INT                         -> int 
       | "input_int" "(" ")"         -> input_int 
       | "-" exp_hi                  -> usub 
       | "(" exp ")"                 -> paren 
-      | VARNAME
+
+var_name: VARNAME                   -> var
 
 stmt: "print" "(" exp ")"           -> print 
-    | VARNAME "=" exp               -> assign
+    | var_name "=" exp               -> assign
     | exp                           -> expr 
-    
+
+newline: NEWLINE                    -> newline
+ 
 stmt_list:                          -> empty_stmt 
-         | stmt NEWLINE stmt_list   -> add_stmt 
+         | stmt newline stmt_list   -> add_stmt 
 
 lang_var: stmt_list                 -> module
