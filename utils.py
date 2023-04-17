@@ -1189,9 +1189,11 @@ def compile_and_test(compiler, compiler_name,
     from interp_x86.eval_x86 import interp_x86
 
     program_root = os.path.splitext(program_filename)[0]
+    # Test FOR self made parser
+    from parser_lvar import parse
     with open(program_filename) as source:
+        # print(source.read())
         program = parse(source.read())
-
     trace('\n# source program: ' + os.path.basename(program_root) + '\n')
     trace(program)
     trace('')
