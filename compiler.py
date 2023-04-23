@@ -82,16 +82,16 @@ class Compiler:
                 return new_exprs
             case Assign([Name(var)], exp):
                 rcotp = self.rco_exp(exp, False)
-                print(rcotp)
+                # print(rcotp)
                 new_exprs = self.rco_flat(rcotp)
-                print(new_exprs)
+                # print(new_exprs)
                 new_exprs.append(Assign([Name(var)], rcotp[0]))
                 return new_exprs
 
     def remove_complex_operands(self, p: Module) -> Module:
         match p:
             case Module(body):
-                print(body)
+                # print(body)
                 new_body = []
                 new_body_temp = [self.rco_stmt(s) for s in body]
                 # print(new_body_temp == [None]) => True
@@ -116,8 +116,8 @@ class Compiler:
                 return Immediate(x)
             case Reg(_):
                 return e
-            case Name(_):
-                return e
+            case Name(var):
+                return Variable(var)
 
     def select_instr(self, e: expr) -> List[instr]:
         # Patch, don't know if dangerous
@@ -142,24 +142,24 @@ class Compiler:
             case ( BinOp(Name(x) as var1, Add(), Constant(y) as atm1)
                  | BinOp(Constant(y) as atm1, Add(), Name(x) as var1) ):
                 if x == target:
-                    return [Instr('addq', [select_arg(atm1), var1])]
+                    return [Instr('addq', [select_arg(atm1), Variable(x)])]
                 # TODO
-                instrs = instrs + [Instr('movq', [var1, Name(target)])]
-                instrs = instrs + [Instr('addq', [select_arg(atm1), Name(target)])]
+                instrs = instrs + [Instr('movq', [Variable(x), Variable(target)])]
+                instrs = instrs + [Instr('addq', [select_arg(atm1), Variable(target)])]
                 return instrs
             # var = atm1 + atm2
             case BinOp(Constant(x) as atm1, Add(), Constant(y) as atm2):
-                instrs = instrs + [Instr('movq', [select_arg(atm1), Name(target)])]
-                instrs = instrs + [Instr('addq', [select_arg(atm2), Name(target)])]
+                instrs = instrs + [Instr('movq', [select_arg(atm1), Variable(target)])]
+                instrs = instrs + [Instr('addq', [select_arg(atm2), Variable(target)])]
                 return instrs
             # var = var1 + var2
             case BinOp(Name(x) as var1, Add(), Name(y) as var2):
                 if x == target:
-                    return [Instr('addq', [var2, var1])]
+                    return [Instr('addq', [Variable(y), Variable(x)])]
                 if y == target:
-                    return [Instr('addq', [var1, var2])]
-                instrs = instrs + [Instr('movq', [var1, Name(target)])]
-                instrs = instrs + [Instr('addq', [var2, Name(target)])]
+                    return [Instr('addq', [Variable(x), Variable(y)])]
+                instrs = instrs + [Instr('movq', [Variable(x), Variable(target)])]
+                instrs = instrs + [Instr('addq', [Variable(y), Variable(target)])]
                 return instrs
                 
             # Sub-Op 
@@ -167,27 +167,27 @@ class Compiler:
             # ! This can write in one case and replace with a sub-pattern-match
             case BinOp(Name(x) as var1, Sub(), Constant(y) as atm1):
                 if x == target:
-                    return [Instr('subq', [select_arg(atm1), var1])]
-                instrs = instrs + [Instr('movq', [var1, Name(target)])]
-                instrs = instrs + [Instr('subq', [select_arg(atm1), Name(target)])]
+                    return [Instr('subq', [select_arg(atm1), Variable(x)])]
+                instrs = instrs + [Instr('movq', [Variable(x), Variable(target)])]
+                instrs = instrs + [Instr('subq', [select_arg(atm1), Variable(target)])]
                 return instrs
             # var = atm1 - var1
             case BinOp(Constant(y) as atm1, Sub(), Name(x) as var1):
                 # TODO
-                instrs = instrs + [Instr('movq', [select_arg(atm1), Name(target)])]
-                instrs = instrs + [Instr('subq', [var1, Name(target)])]
+                instrs = instrs + [Instr('movq', [select_arg(atm1), Variable(target)])]
+                instrs = instrs + [Instr('subq', [Variable(x), Variable(target)])]
                 return instrs
             # var = atm1 - atm2
             case BinOp(Constant(x) as atm1, Sub(), Constant(y) as atm2):
-                instrs = instrs + [Instr('movq', [select_arg(atm1), Name(target)])]
-                instrs = instrs + [Instr('subq', [select_arg(atm2), Name(target)])]
+                instrs = instrs + [Instr('movq', [select_arg(atm1), Variable(target)])]
+                instrs = instrs + [Instr('subq', [select_arg(atm2), Variable(target)])]
                 return instrs
             # var = var1 - var2
             case BinOp(Name(x) as var1, Sub(), Name(y) as var2):
                 if x == target:
-                    return [Instr('subq', [var2, var1])]
-                instrs = instrs + [Instr('movq', [var1, Name(target)])]
-                instrs = instrs + [Instr('subq', [var2, Name(target)])]
+                    return [Instr('subq', [Variable(y), Variable(x)])]
+                instrs = instrs + [Instr('movq', [Variable(x), Variable(target)])]
+                instrs = instrs + [Instr('subq', [Variable(y), Variable(target)])]
                 return instrs
 
             # Neg-Op
@@ -195,27 +195,27 @@ class Compiler:
                 match atm1:
                     case Constant(_):
                         instrs = instrs + [Instr('movq', [select_arg(atm1)
-                                                         , Name(target)])]
-                        instrs = instrs + [Instr('negq', [Name(target)])]
+                                                         , Variable(target)])]
+                        instrs = instrs + [Instr('negq', [Variable(target)])]
                         return instrs
                     case Name(var):
                         if var == target:
                             return [Instr('negq', [atm1])]
-                        instrs = instrs + [Instr('movq', [atm1, Name(target)])]
-                        instrs = instrs + [Instr('negq', [Name(target)])]
+                        instrs = instrs + [Instr('movq', [atm1, Variable(target)])]
+                        instrs = instrs + [Instr('negq', [Variable(target)])]
                         return instrs
             # var = Constant 
             case Constant(value) as atm1:
-                instrs = instrs + [Instr('movq', [select_arg(atm1), Name(target)])]
+                instrs = instrs + [Instr('movq', [select_arg(atm1), Variable(target)])]
                 return instrs
             # var = var
             case Name(var) as atm1:
-                instrs = instrs + [Instr('movq', [atm1, Name(target)])]
+                instrs = instrs + [Instr('movq', [select_arg(atm1), Variable(target)])]
                 return instrs
             case Call(Name('input_int'), []):
                 instrs = self.select_instr(e)
                 instrs = instrs + [Instr('movq', [select_arg(Reg('rax'))
-                                                 , Name(target)])]
+                                                 , Variable(target)])]
                 return instrs
 
     def select_stmt(self, s: stmt) -> List[instr]:
@@ -250,12 +250,12 @@ class Compiler:
                     new_body = new_body + stmts
                 print("select_instruciton PASS:")
                 print(X86Program(new_body))
-                new_body = self.assign_homes_instrs(new_body, {})
-                print("assign_homes PASS:")
-                print(X86Program(new_body))
-                new_body = self.patch_instrs(new_body)
-                print("patch_instructions PASS:")
-                print(X86Program(new_body))
+                # new_body = self.assign_homes_instrs(new_body, {})
+                # print("assign_homes PASS:")
+                # print(X86Program(new_body))
+                # new_body = self.patch_instrs(new_body)
+                # print("patch_instructions PASS:")
+                # print(X86Program(new_body))
                 return X86Program(new_body)
 
     ############################################################################
@@ -276,7 +276,7 @@ class Compiler:
 
     def assign_homes_arg(self, a: arg, home: Dict[Variable, arg]) -> arg:
         match a:
-            case Name(var): # Use Deref(reg, int)
+            case Variable(var): # Use Deref(reg, int)
                 if var in home:
                     return home[var]
                 else:
@@ -378,4 +378,5 @@ class Compiler:
                 new_body.append(Instr('popq', [Reg('rbp')]))
                 new_body.append(Retq())
                 return X86Program({'main':new_body})
+                # return X86Program(new_body)
 
