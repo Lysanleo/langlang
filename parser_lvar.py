@@ -11,8 +11,8 @@ parser = Lark(grammar, start = "lang_var", parser = "earley", ambiguity = 'expli
 def parse_lvar(input_str):
     try:
         result = parser.parse(input_str)
-        print(input_str)
-        print(result)
+        # print(input_str)
+        # print(result)
         return result
     except Exception as e:
         print(e)
@@ -73,16 +73,16 @@ def parse_tree_to_ast(e):
         # It will be helpful to have Monad
         nested_ast = parse_tree_to_ast(e1)
         flatted_ast = flat_ast(nested_ast)
-        print(flatted_ast)
+        # print(flatted_ast)
         filtered_ast = filter_ast(flatted_ast)
         return Module(filtered_ast)
     else:
         raise Exception('unhandled parse tree', e)
 
 def parse(input):
-    print(input)
+    # print(input)
     s1 = parse_lvar(input)
-    print(s1)
+    # print(s1)
     s2 = parse_tree_to_ast(s1)
     return s2
 
