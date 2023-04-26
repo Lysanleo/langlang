@@ -10,9 +10,17 @@ from utils import dedent, indent, indent_stmt, label_name
 @dataclass
 class X86Program:
     body: dict[str, list[instr]] | list[instr]
+    stack_space = 0
+    home = {}
 
     # def __init__(self):
     #     self.stack_space = 0
+
+    def get_body(self):
+        return self.body
+
+    def get_(self):
+        return self.home
 
     def __str__(self):
         result = ''

@@ -1572,6 +1572,7 @@ def compile(compiler, compiler_name, type_check_L, type_check_C,
     x86 = compiler.prelude_and_conclusion(x86)
     trace_ast_and_concrete(x86)
 
+
     # Output x86 program to the .s file
     x86_filename = program_root + ".s"
     with open(x86_filename, "w") as dest:
