@@ -3,7 +3,7 @@
 main:
     pushq %rbp
     movq %rsp, %rbp
-    subq $16, %rsp
+    subq $32, %rsp
     movq $10, -8(%rbp)
     negq -8(%rbp)
     movq -8(%rbp), %rax
@@ -14,7 +14,7 @@ main:
     addq $10, -24(%rbp)
     movq -24(%rbp), %rdi
     callq print_int
-    addq $16, %rsp
+    addq $32, %rsp
     popq %rbp
     retq
 

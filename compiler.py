@@ -82,10 +82,10 @@ class Compiler:
                 return new_exprs
             case Assign([Name(var)], exp):
                 rcotp = self.rco_exp(exp, False)
-                # print(rcotp)
+                print(rcotp)
                 new_exprs = self.rco_flat(rcotp)
-                # print(new_exprs)
                 new_exprs.append(Assign([Name(var)], rcotp[0]))
+                print(new_exprs)
                 return new_exprs
 
     def remove_complex_operands(self, p: Module) -> Module:
@@ -307,7 +307,9 @@ class Compiler:
                 new_body = self.assign_homes_instrs(body, home)
                 x86prog = X86Program(new_body)
                 stack_space = math.ceil(abs(self.calculate_offset(home)) / 16) * 16
+                print(stack_space)
                 x86prog.stack_space = stack_space
+                x86prog.home = home
                 return x86prog
 
     ############################################################################
@@ -359,6 +361,7 @@ class Compiler:
                 new_body = self.patch_instrs(body)
                 x86prog = X86Program(new_body)
                 x86prog.stack_space = p.stack_space
+                x86prog.home = p.home
                 return x86prog
 
     ############################################################################
@@ -377,6 +380,8 @@ class Compiler:
                 new_body.append(Instr('addq', [Immediate(p.stack_space), Reg('rsp')]))
                 new_body.append(Instr('popq', [Reg('rbp')]))
                 new_body.append(Retq())
-                return X86Program({'main':new_body})
-                # return X86Program(new_body)
+                x86prog = X86Program({'main':new_body})
+                x86prog.stack_space = p.stack_space
+                x86prog.home = p.home
+                return x86prog
 
