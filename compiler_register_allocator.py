@@ -78,6 +78,7 @@ class Compiler(compiler.Compiler):
         
 
     def uncover_live(self, p: X86Program) -> Dict[instr, Set[location]]:
+        # L_after :: la
         instr_la_map : Dict[instr, Set[location]] = {}
         match p:
             case X86Program(instrs):
@@ -98,8 +99,38 @@ class Compiler(compiler.Compiler):
 
     def build_interference(self, p: X86Program,
                            live_after: Dict[instr, Set[location]]) -> UndirectedAdjList:
-        # YOUR CODE HERE
-        pass
+        inter_graph = UndirectedAdjList()
+        body = p.get_body()
+        instrs = []
+        if isinstance(body, dict):
+            # main instr only
+            instrs = body['main']
+        else:
+            instrs = body
+
+        # Add edges
+        for i in instrs:
+            match i:
+                case Callq(_,_):
+                    # pass
+                    for v in live_after[i]:
+                        for creg in self.caller_saved_regs:
+                            inter_graph.add_edge(v, creg)
+                case Instr('movq', [arg1, arg2]):
+                    for v in live_after[i]:
+                        if v != arg1 and v != arg2:
+                            inter_graph.add_edge(v, arg2)
+                        inter_graph.add_vertex(v)
+                case _:
+                    for v in live_after[i]:
+                        for d in self.write_vars(i):
+                            # v != d
+                            if d != v:
+                                inter_graph.add_edge(v, d)
+                        inter_graph.add_vertex(v)
+
+        # v_list = {s for i in instrs for s in live_after[i]}
+        return inter_graph
 
     ############################################################################
     # Allocate Registers

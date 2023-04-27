@@ -1,4 +1,5 @@
 from collections import deque
+from typing import List
 
 class Edge:
     def __init__(self, src, tgt):
@@ -170,20 +171,20 @@ class UndirectedAdjList(DirectedAdjList):
         self.edge_set.remove(UEdge(u,v))
                 
     def show(self):
-      from graphviz import Graph
-      dot = Graph(engine='neato')
-      for u in self.vertices():
-        dot.node(self.name(u))
-      for e in self.edges():
-        dot.edge(self.name(e.source), self.name(e.target), len='1.5')
-      return dot
+        from graphviz import Graph
+        dot = Graph(engine='neato')
+        for u in self.vertices():
+            dot.node(self.name(u))
+        for e in self.edges():
+            dot.edge(self.name(e.source), self.name(e.target), len='1.5')
+        return dot
 
 
 ################################################################################
 # Topological Sort
 ################################################################################
 
-def topological_sort(G: DirectedAdjList) -> [Vertex]:
+def topological_sort(G: DirectedAdjList) -> List[Vertex]:
     in_degree = {u: 0 for u in G.vertices()}
     for e in G.edges():
         in_degree[e.target] += 1
