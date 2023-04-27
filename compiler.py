@@ -201,7 +201,7 @@ class Compiler:
                     case Name(var):
                         if var == target:
                             return [Instr('negq', [atm1])]
-                        instrs = instrs + [Instr('movq', [atm1, Variable(target)])]
+                        instrs = instrs + [Instr('movq', [select_arg(atm1), Variable(target)])]
                         instrs = instrs + [Instr('negq', [Variable(target)])]
                         return instrs
             # var = Constant 

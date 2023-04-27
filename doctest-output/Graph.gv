@@ -1,0 +1,36 @@
+graph {
+	graph [layout=neato]
+	"%rsp"
+	"%rbp"
+	v
+	w
+	x
+	y
+	z
+	"tmp.0"
+	"tmp.1"
+	"%rdi"
+	w -- y [len=1.5]
+	"%rbp" -- x [len=1.5]
+	"%rsp" -- x [len=1.5]
+	"%rsp" -- "%rdi" [len=1.5]
+	"%rbp" -- "%rdi" [len=1.5]
+	"%rsp" -- z [len=1.5]
+	"%rbp" -- z [len=1.5]
+	w -- x [len=1.5]
+	"%rsp" -- v [len=1.5]
+	"%rbp" -- v [len=1.5]
+	z -- "tmp.0" [len=1.5]
+	"%rsp" -- "tmp.1" [len=1.5]
+	"%rbp" -- "tmp.1" [len=1.5]
+	y -- z [len=1.5]
+	w -- z [len=1.5]
+	"%rbp" -- "tmp.0" [len=1.5]
+	"%rsp" -- "tmp.0" [len=1.5]
+	"tmp.0" -- "tmp.1" [len=1.5]
+	"%rbp" -- y [len=1.5]
+	"%rsp" -- y [len=1.5]
+	v -- w [len=1.5]
+	"%rbp" -- w [len=1.5]
+	"%rsp" -- w [len=1.5]
+}
