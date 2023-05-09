@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from x86_ast import *
 
 # compiler = cra.Compiler()
-compiler = cra.Compiler()
+compiler:cra.Compiler = cra.Compiler()
 
 def print_ia_map(instrs, ia_map):
     instrs = instrs['main'] if isinstance(instrs, dict) else instrs
@@ -32,7 +32,7 @@ def trace_ast_and_concrete(ast):
     trace("AST:")
     trace(repr(ast))
 
-def compile(compiler, program_filename):
+def compile(compiler:cra.Compiler, program_filename):
     program_root = os.path.splitext(program_filename)[0]
     with open(program_filename) as source:
         program = parse(source.read())
@@ -69,6 +69,18 @@ def compile(compiler, program_filename):
     ia_map = compiler.uncover_live(current_instr)
     instrs = current_instr.get_body()
     print_ia_map(instrs, ia_map)
+
+    interference_graph = compiler.build_interference(current_instr, ia_map)
+
+    vars = [lo for lo in interference_graph.vertices() if isinstance(lo, Variable)]
+
+    print(set(vars))
+    # Test color graph
+    compiler.color_graph(interference_graph, compiler.get_variables(interference_graph))
+    # dot = interference_graph.show()
+    # print(dot)
+    # dot.graph_attr['layout'] = 'neato'
+    # dot.render(directory='doctest-output.png', view=True) 
 
     # Draw inference graph
 
