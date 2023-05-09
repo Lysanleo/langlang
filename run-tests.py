@@ -7,12 +7,16 @@ sys.path.append('../python-student-support-code/interp_x86')
 import compiler
 import interp_Lvar
 import type_check_Lvar
-from utils import run_tests, run_one_test, enable_tracing
+import interp_Lif
+import type_check_Lif
+from utils import enable_tracing, run_tests, run_one_test
 from interp_x86.eval_x86 import interp_x86
 
 enable_tracing()
 
 compiler = compiler.Compiler()
+
+# Test Options for Lvar
 
 typecheck_Lvar = type_check_Lvar.TypeCheckLvar().type_check
 
@@ -28,6 +32,38 @@ interp_dict = {
     'patch_instructions': interp_x86,
 }
 
+
+# Test Options for Lif
+
+typecheckLif = type_check_Lif.TypeCheckLif().type_check
+interpLif = interp_Lif.InterpLif().interp
+
+typecheck_if_dict = {
+    'source': typecheckLif,
+    'shrink': typecheckLif,
+    'remove_complex_operands': typecheckLif,
+}
+interp_if_dict = {
+    'shrink': interpLif,
+    'remove_complex_operands': interpLif,
+}
+
+
+# Test Options for Lif
+
+typecheckLif = type_check_Lif.TypeCheckLif().type_check
+interpLif = interp_Lif.InterpLif().interp
+
+typecheck_if_dict = {
+    'source': typecheckLif,
+    'shrink': typecheckLif,
+    'remove_complex_operands': typecheckLif,
+}
+interp_if_dict = {
+    'shrink': interpLif,
+    'remove_complex_operands': interpLif,
+}
+
 if True:
     run_tests('var', compiler, 'var',
               typecheck_dict,
@@ -39,4 +75,11 @@ else:
                  'var',
                  typecheck_dict,
                  interp_dict)
+    enable_tracing()
+    run_tests('var', compiler, 'var',
+              typecheck_dict,
+              interp_dict)
 
+    run_tests('if', compiler, 'if',
+              typecheck_if_dict,
+              interp_if_dict)
