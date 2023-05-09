@@ -1186,7 +1186,7 @@ def compile_and_test(compiler, compiler_name,
 
     program_root = os.path.splitext(program_filename)[0]
     # Test FOR self made parser
-    from parser_lvar import parse
+    # from parser_lvar import parse
     with open(program_filename) as source:
         # print(source.read())
         program = parse(source.read())
@@ -1359,6 +1359,7 @@ def compile_and_test(compiler, compiler_name,
 
     passname = 'remove_complex_operands'
     trace('\n# ' + passname + '\n')
+    # print(program)
     program = compiler.remove_complex_operands(program)
     trace(program)
     if passname in type_check_dict.keys():
