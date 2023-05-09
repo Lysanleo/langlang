@@ -10,8 +10,65 @@ import math
 Binding = Tuple[Name, expr]
 Temporaries = List[Binding]
 
+Label = str
+Stmts = List[stmt]
+BasicBlocks = Dict[Label,Stmts]
 
 class Compiler:
+    ############################################################################
+    # Shrink if
+    ############################################################################
+
+    def shrink_expr(self, e:expr) -> expr:
+        # print(e)
+        match e:
+            case BoolOp(boolop, [e1, e2]):
+                match boolop:
+                    case And():
+                        new_expr = IfExp(e1, e2, Constant(False))
+                    case Or():
+                        new_expr = IfExp(e1, Constant(True), e2)
+                return new_expr
+            case IfExp(test, e2, e3):
+                new_test = self.shrink_expr(test)
+                new_e2 = self.shrink_expr(e2)
+                new_e3 = self.shrink_expr(e3)
+                return IfExp(new_test, new_e2, new_e3)
+            case UnaryOp(op, e):
+                new_e = self.shrink_expr(e)
+                return UnaryOp(op, new_e)
+            case Compare(e1, [cmp], [e2]):
+                new_e1 = self.shrink_expr(e1)
+                new_e2 = self.shrink_expr(e2)
+                return Compare(new_e1, [cmp], [new_e2])
+            case BinOp(e1, op, e2):
+                new_e1 = self.shrink_expr(e1)
+                new_e2 = self.shrink_expr(e2)
+                return BinOp(new_e1, op, new_e2)
+            case _:
+                return e
+
+    def shrink_stmt(self, s:stmt) -> stmt:
+        match s:
+            case If(exp, s1, s2):
+                new_s1 = [self.shrink_stmt(stm) for stm in s1]
+                new_s2 = [self.shrink_stmt(stm) for stm in s2]
+                return If(self.shrink_expr(exp), new_s1, new_s2)
+            case Assign(vars, e):
+                return Assign(vars, self.shrink_expr(e))
+            case Expr(Call(func, [e])):
+                return Expr(Call(func,[self.shrink_expr(e)]))
+            case Expr(e):
+                return Expr(self.shrink_expr(e))
+            case _:
+                return s
+
+    def shrink(self, p:Module) -> Module:
+        match p:
+            case Module(body):
+                print(body)
+                new_body = [self.shrink_stmt(s) for s in body]
+        return Module(new_body)
 
     ############################################################################
     # Remove Complex Operands
@@ -21,6 +78,9 @@ class Compiler:
         stmts = [Assign([atmtp[0]], atmtp[1]) for atmtp in rcolist[1]]
         # print(stmts)
         return stmts
+
+    def rco_atom(self, e:expr) -> Tuple[expr, Temporaries]:
+        pass
 
     def rco_exp(self, e: expr, need_atomic: bool) -> Tuple[expr, Temporaries]:
         new_sym = ""
@@ -58,12 +118,41 @@ class Compiler:
                     new_sym = generate_name("tmp")
                     return (Name(new_sym), new_bindings + [(Name(new_sym), new_expr)])
                 return (new_expr, new_bindings)
+            case UnaryOp(Not(), atm):
+                atm1 = self.rco_exp(atm, True)
+                new_expr = UnaryOp(Not(), atm1[0])
+                new_bindings = atm1[1]
+                if need_atomic:
+                    new_sym = generate_name("tmp")
+                    return (Name(new_sym), new_bindings + [(Name(new_sym), new_expr)])
+                return (new_expr, new_bindings)
             case Call(Name('input_int'), []):
                 new_expr = e
                 if need_atomic:
                     new_sym = generate_name("tmp")
                     return (Name(new_sym), [(Name(new_sym), new_expr)])
                 return (e, [])
+            case Compare(latm, [cmp], [ratm]):
+                atm1 = self.rco_exp(latm, True)
+                atm2 = self.rco_exp(ratm, True)
+                new_expr = Compare(atm1[0], [cmp], [atm2[0]])
+                new_bindings = atm1[1] + atm2[1]
+                if need_atomic:
+                    new_sym = generate_name("tmp")
+                    return (Name(new_sym), new_bindings + [(Name(new_sym), new_expr)])
+                return (new_expr, new_bindings)
+            case IfExp(e1, e2, e3):
+                atm1 = self.rco_exp(e1, False)
+                ss1 = self.rco_stmt(Expr(e2))
+                ss2 = self.rco_stmt(Expr(e3))
+                new_expr = IfExp(atm1[0], Begin(ss1, ss1[len(ss1)-1].value),
+                                          Begin(ss2, ss2[len(ss2)-1].value))
+                new_bindings = atm1[1]
+                if need_atomic:
+                    new_sym = generate_name("tmp")
+                    new_bindings = new_bindings + [(Name(new_sym), new_expr)]
+                    return (Name(new_sym), new_bindings)
+                return (new_expr, new_bindings)
 
     def rco_stmt(self, s: stmt) -> List[stmt]:
         match s:
@@ -82,24 +171,122 @@ class Compiler:
                 return new_exprs
             case Assign([Name(var)], exp):
                 rcotp = self.rco_exp(exp, False)
-                print(rcotp)
+                # print(rcotp)
                 new_exprs = self.rco_flat(rcotp)
                 new_exprs.append(Assign([Name(var)], rcotp[0]))
-                print(new_exprs)
+                # print(new_exprs)
+                return new_exprs
+            case If(e1, ss1, ss2):
+                rcotp = self.rco_exp(e1, False)
+                new_exprs = self.rco_flat(rcotp)
+                print(ss1)
+                print(ss2)
+                new_ss1_temp = [self.rco_stmt(stm) for stm in ss1]
+                new_ss2_temp = [self.rco_stmt(stm) for stm in ss2]
+                new_ss1 = []
+                new_ss2 = []
+                for stmts in new_ss1_temp:
+                    if stmts:
+                        new_ss1 = new_ss1 + stmts
+                for stmts in new_ss2_temp:
+                    if stmts:
+                        new_ss2 = new_ss2 + stmts
+                # print(new_exprs)
+                # print(rcotp)
+                new_exprs.append(If(rcotp[0], new_ss1, new_ss2))
                 return new_exprs
 
     def remove_complex_operands(self, p: Module) -> Module:
         match p:
             case Module(body):
+                # print("here")
                 # print(body)
                 new_body = []
                 new_body_temp = [self.rco_stmt(s) for s in body]
                 # print(new_body_temp == [None]) => True
                 for stmts in new_body_temp:
                     new_body = new_body + stmts
-                print(new_body)
+                # print(new_body)
                 return Module(new_body)
         
+    ############################################################################
+    # Explicate Control
+    ############################################################################
+
+    def create_block(self, stmts:List[stmt], basic_blocks:Dict[str,List[stmt]]) -> List[stmt]:
+        match stmts:
+            case [Goto(l)]:
+                return stmts
+            case _:
+                label = label_name(generate_name('block'))
+                basic_blocks[label] = stmts
+                return [Goto(label)]
+
+    def explicate_effect(self, e:expr, cont:Stmts, basic_blocks:Dict[str,List[stmt]]) -> Stmts:
+        match e:
+            case IfExp(test, body, orelse):
+                br1 = self.explicate_effect(body)
+            case Call(func, args):
+                # Translate it directly to a Expr AST node(a statement).
+                new_cont = [Expr(e)] + cont
+                return new_cont
+            case Begin(body, result):
+                # Begin in $L_if^mon$ only exists in IfExp branches
+                pass
+            case _:
+                # No side-effects, discard it
+                return cont
+                
+    
+    def explicate_assign(self, rhs, lhs, cont, basic_blocks):
+        match rhs:
+            case IfExp(test, body, orelse):
+                pass
+            case Begin(body, result):
+                pass
+            case _:
+                return [Assign([lhs], rhs)] + cont
+
+    def explicate_pred(self, cnd, thn, els, basic_blocks):
+        match cnd: 
+            case Compare(left, [op], [right]):
+                goto_thn = self.create_block(thn, basic_blocks)
+                goto_els = self.create_block(els, basic_blocks)
+                return [If(cnd, goto_thn, goto_els)] 
+            case Constant(True):
+                return thn; 
+            case Constant(False):
+                return els; 
+            case UnaryOp(Not(), operand):
+                pass
+            case IfExp(test, body, orelse):
+                pass
+            case Begin(body, result):
+                pass
+            case _:
+                return [If(Compare(cnd, [Eq()], [Constant(False)]),
+                           self.create_block(els, basic_blocks),
+                           self.create_block(thn, basic_blocks))]
+
+    def explicate_stmt(self, s:stmt, cont:Stmts, basic_blocks:BasicBlocks) -> Stmts:
+        match s:
+            case Assign([lhs], rhs):
+                return self.explicate_assign(rhs, lhs, cont, basic_blocks)
+            case Expr(value):
+                return self.explicate_effect(value, cont, basic_blocks)
+            case If(test, body, orelse):
+                # Similar to IfExp
+                pass
+
+    def explicate_control(self, p:Module):
+        match p:
+            case Module(body):
+                new_body = [Return(Constant(0))]
+                basic_blocks = {}
+                for s in reversed(body):
+                    new_body = self.explicate_stmt(s, new_body, basic_blocks)
+                basic_blocks[label_name('start')] = new_body
+                return CProgram(basic_blocks)
 
     ############################################################################
     # Select Instructions
@@ -321,7 +508,9 @@ class Compiler:
         match i:
             case Instr(cmd, [arg1, arg2]) if cmd in self.instrs_two:
                 match (arg1, arg2):
-                    case (Deref(_), Deref(_)):
+                    case (Deref(_) as d1, Deref(_) as d2) if d1 == d2 and cmd == 'movq':
+                        instrs.append(i)
+                    case (Deref(_) as d1, Deref(_) as d2):
                         instrs.append(Instr('movq', [arg1, Reg('rax')]))
                         instrs.append(Instr(cmd, [Reg('rax'), arg2]))
                     case (Immediate(x), _):
