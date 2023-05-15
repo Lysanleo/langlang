@@ -1595,3 +1595,10 @@ def run_tests(lang, compiler, compiler_name, type_check_dict, interp_dict):
           + ' for compiler ' + compiler_name + ' on language ' + lang)
     print('passes: ' + repr(successful_passes) + '/' + repr(total_passes) \
           + ' for compiler ' + compiler_name + ' on language ' + lang)
+
+
+# Print Expr/Stmts List
+
+def prints(xs):
+    for x in xs:
+        print(x,"\n")
