@@ -145,8 +145,9 @@ class Compiler:
                 atm1 = self.rco_exp(e1, False)
                 ss1 = self.rco_stmt(Expr(e2))
                 ss2 = self.rco_stmt(Expr(e3))
-                new_expr = IfExp(atm1[0], Begin(ss1, ss1[len(ss1)-1].value),
-                                          Begin(ss2, ss2[len(ss2)-1].value))
+                print("ss1:", ss1)
+                new_expr = IfExp(atm1[0], Begin(ss1[0:len(ss1)-1], ss1[len(ss1)-1].value),
+                                          Begin(ss2[0:len(ss1)-1], ss2[len(ss2)-1].value))
                 new_bindings = atm1[1]
                 if need_atomic:
                     new_sym = generate_name("tmp")
@@ -179,8 +180,8 @@ class Compiler:
             case If(e1, ss1, ss2):
                 rcotp = self.rco_exp(e1, False)
                 new_exprs = self.rco_flat(rcotp)
-                print(ss1)
-                print(ss2)
+                # print(ss1)
+                # print(ss2)
                 new_ss1_temp = [self.rco_stmt(stm) for stm in ss1]
                 new_ss2_temp = [self.rco_stmt(stm) for stm in ss2]
                 new_ss1 = []
@@ -206,7 +207,7 @@ class Compiler:
                 # print(new_body_temp == [None]) => True
                 for stmts in new_body_temp:
                     new_body = new_body + stmts
-                # print(new_body)
+                print(new_body)
                 return Module(new_body)
         
     ############################################################################
@@ -225,44 +226,65 @@ class Compiler:
     def explicate_effect(self, e:expr, cont:Stmts, basic_blocks:Dict[str,List[stmt]]) -> Stmts:
         match e:
             case IfExp(test, body, orelse):
-                br1 = self.explicate_effect(body)
+                cont = self.create_block(cont, basic_blocks)
+                br1 = self.explicate_effect(body, cont, basic_blocks)
+                br2 = self.explicate_effect(orelse, cont, basic_blocks)
+                return self.explicate_pred(test, br1, br2, basic_blocks)
             case Call(func, args):
                 # Translate it directly to a Expr AST node(a statement).
                 new_cont = [Expr(e)] + cont
                 return new_cont
             case Begin(body, result):
-                # Begin in $L_if^mon$ only exists in IfExp branches
-                pass
+                # Begin in $L_if^mon$ only(?) exists in IfExp branches
+                ret_stmt = Return(result)
+                return body+[ret_stmt]+cont
             case _:
                 # No side-effects, discard it
                 return cont
                 
     
-    def explicate_assign(self, rhs, lhs, cont, basic_blocks):
+    def explicate_assign(self, rhs, lhs, cont, basic_blocks) -> Stmts:
         match rhs:
             case IfExp(test, body, orelse):
-                pass
+                # Pack the stmt should be excuted after this assign as a block(?)
+                # print(lhs, rhs)
+                cont = self.create_block(cont, basic_blocks)
+                new_body = self.explicate_assign(body, lhs, cont, basic_blocks)
+                new_orelse = self.explicate_assign(orelse, lhs, cont, basic_blocks)
+                goto_thn = self.create_block(new_body, basic_blocks)
+                goto_els = self.create_block(new_orelse, basic_blocks)
+                new_cond = self.explicate_pred(test, goto_thn, goto_els, basic_blocks)
+                # Clear cont by the way.
+                return new_cond
             case Begin(body, result):
-                pass
+                return [Assign([lhs], result)] + (cont if cont else [])
             case _:
-                return [Assign([lhs], rhs)] + cont
+                if (cont == None):
+                    print(lhs, rhs)
+                return [Assign([lhs], rhs)] + (cont if cont else [])
 
-    def explicate_pred(self, cnd, thn, els, basic_blocks):
-        match cnd: 
+    def explicate_pred(self, cnd:expr, thn, els, basic_blocks):
+        match cnd:
             case Compare(left, [op], [right]):
-                goto_thn = self.create_block(thn, basic_blocks)
-                goto_els = self.create_block(els, basic_blocks)
-                return [If(cnd, goto_thn, goto_els)] 
+                return [If(cnd, thn, els)] 
             case Constant(True):
                 return thn; 
             case Constant(False):
                 return els; 
             case UnaryOp(Not(), operand):
-                pass
+                return [If(operand, els, thn)]
             case IfExp(test, body, orelse):
-                pass
+                goto_then = self.explicate_pred(body.result, thn, els, basic_blocks)
+                goto_else = self.explicate_pred(orelse.result, thn, els, basic_blocks)
+                goto_body = self.create_block(goto_then, basic_blocks)
+                goto_orelse = self.create_block(goto_else, basic_blocks)
+                new_test = self.explicate_pred(test, body.body+goto_body, orelse.body+goto_orelse, basic_blocks)
+                print("new test:")
+                print(new_test)
+                # cont = self.create_block(cont, basic_blocks)
+                return new_test
             case Begin(body, result):
-                pass
+                return body.append(Expr(result))
             case _:
                 return [If(Compare(cnd, [Eq()], [Constant(False)]),
                            self.create_block(els, basic_blocks),
@@ -276,7 +298,10 @@ class Compiler:
                 return self.explicate_effect(value, cont, basic_blocks)
             case If(test, body, orelse):
                 # Similar to IfExp
-                pass
+                # If(Compare(atm,[cmp],[atm]), [Goto(label)], [Goto(label)])
+                goto_body = self.create_block(body, basic_blocks)
+                goto_orelse = self.create_block(orelse, basic_blocks)
+                return [If(test, goto_body, goto_orelse)]
 
     def explicate_control(self, p:Module):
         match p:
@@ -286,6 +311,7 @@ class Compiler:
                 for s in reversed(body):
                     new_body = self.explicate_stmt(s, new_body, basic_blocks)
                 basic_blocks[label_name('start')] = new_body
+                print(basic_blocks)
                 return CProgram(basic_blocks)
 
     ############################################################################
