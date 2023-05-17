@@ -2,6 +2,7 @@ import ast
 from ast import *
 from utils import *
 from x86_ast import *
+import x86_ast
 # from interp_x86.x86exp import Retq
 import os
 from typing import List, Tuple, Set, Dict
@@ -263,7 +264,7 @@ class Compiler:
                     print(lhs, rhs)
                 return [Assign([lhs], rhs)] + (cont if cont else [])
 
-    def explicate_pred(self, cnd:expr, thn, els, basic_blocks):
+    def explicate_pred(self, cnd:expr, thn, els, basic_blocks) -> Stmts:
         match cnd:
             case Compare(left, [op], [right]):
                 return [If(cnd, thn, els)] 
@@ -325,12 +326,23 @@ class Compiler:
 
     def select_arg(self, e: expr) -> arg:
         match e:
-            case Constant(x):
+            case Constant(x) if isinstance(x, bool):
+                return Immediate(1 if x else 0)
+            case Constant(x) if isinstance(x, int):
                 return Immediate(x)
             case Reg(_):
                 return e
             case Name(var):
                 return Variable(var)
+    def cmp_helper(self, cmp) -> str:
+        match cmp:
+            case Eq():    cc = "e"
+            case NotEq(): cc = "ne"
+            case Lt():    cc = "l"
+            case LtE():   cc = "le"
+            case Gt():    cc = "g"
+            case GtE():   cc = "ge"
+        return cc
 
     def select_instr(self, e: expr) -> List[instr]:
         # Patch, don't know if dangerous
@@ -345,7 +357,7 @@ class Compiler:
                 instrs.append(Callq('read_int', 0))
                 return instrs
 
-    def assign_helper(self, target:str, e: expr) -> List[instr]:
+    def assign_helper(self, target:str, e: expr, Variable) -> List[instr]:
         # Patch, don't know if dangerous
         select_arg = self.select_arg
         instrs:List[instr] = []
@@ -357,7 +369,7 @@ class Compiler:
                 if x == target:
                     return [Instr('addq', [select_arg(atm1), Variable(x)])]
                 # TODO
-                instrs = instrs + [Instr('movq', [Variable(x), Variable(target)])]
+                instrs = instrs + [Instr('movq', [x86_ast.Variable(x), Variable(target)])]
                 instrs = instrs + [Instr('addq', [select_arg(atm1), Variable(target)])]
                 return instrs
             # var = atm1 + atm2
@@ -371,8 +383,8 @@ class Compiler:
                     return [Instr('addq', [Variable(y), Variable(x)])]
                 if y == target:
                     return [Instr('addq', [Variable(x), Variable(y)])]
-                instrs = instrs + [Instr('movq', [Variable(x), Variable(target)])]
-                instrs = instrs + [Instr('addq', [Variable(y), Variable(target)])]
+                instrs = instrs + [Instr('movq', [x86_ast.Variable(x), Variable(target)])]
+                instrs = instrs + [Instr('addq', [x86_ast.Variable(y), Variable(target)])]
                 return instrs
                 
             # Sub-Op 
@@ -381,7 +393,7 @@ class Compiler:
             case BinOp(Name(x) as var1, Sub(), Constant(y) as atm1):
                 if x == target:
                     return [Instr('subq', [select_arg(atm1), Variable(x)])]
-                instrs = instrs + [Instr('movq', [Variable(x), Variable(target)])]
+                instrs = instrs + [Instr('movq', [x86_ast.Variable(x), Variable(target)])]
                 instrs = instrs + [Instr('subq', [select_arg(atm1), Variable(target)])]
                 return instrs
             # var = atm1 - var1
@@ -399,11 +411,11 @@ class Compiler:
             case BinOp(Name(x) as var1, Sub(), Name(y) as var2):
                 if x == target:
                     return [Instr('subq', [Variable(y), Variable(x)])]
-                instrs = instrs + [Instr('movq', [Variable(x), Variable(target)])]
-                instrs = instrs + [Instr('subq', [Variable(y), Variable(target)])]
+                instrs = instrs + [Instr('movq', [x86_ast.Variable(x), Variable(target)])]
+                instrs = instrs + [Instr('subq', [x86_ast.Variable(y), Variable(target)])]
                 return instrs
 
-            # Neg-Op
+            # var = -var1 
             case UnaryOp(USub(), atm1):
                 match atm1:
                     case Constant(_):
@@ -417,6 +429,24 @@ class Compiler:
                         instrs = instrs + [Instr('movq', [select_arg(atm1), Variable(target)])]
                         instrs = instrs + [Instr('negq', [Variable(target)])]
                         return instrs
+            # var = not bool_var1
+            case UnaryOp(Not(), operand):
+                match operand:
+                    case Name(var) if var == target:
+                        instrs = [Instr('xorq', [Immediate(1), Variable(target)])]
+                    case Constant(_) | Name(_):
+                        instrs = [Instr('movq', [select_arg(operand), Variable(target)])]
+                        # movq arg, var
+                        # xorq $1, var
+                        instrs += [Instr('xorq', [Immediate(1), Variable(target)])]
+                return instrs
+            case Compare(operand1, [cmp], operand2):
+                cc = self.cmp_helper(cmp)
+                instrs = [Instr("cmpq", [operand2, operand1])]
+                instrs.append(Instr("set"+cc, [ByteReg('al')]))
+                instrs.append(Instr("movzbq", [ByteReg('al'), Variable(target)]))
+                return instrs
+
             # var = Constant 
             case Constant(value) as atm1:
                 instrs = instrs + [Instr('movq', [select_arg(atm1), Variable(target)])]
@@ -440,21 +470,34 @@ class Compiler:
                 instrs = select_instr(expr)
                 # print(stmt)
                 # print(instrs)
-                return instrs
             case Expr(expr):
                 #TODO
                 instrs = select_instr(expr)
                 # print(stmt)
                 # print(instrs)
-                return instrs
             case Assign([Name(var)], expr):
-                instrs = self.assign_helper(var, expr)
+                instrs = self.assign_helper(var, expr, Variable=Variable)
                 # print(stmt)
                 # print(instrs)
-                return instrs
+            case Goto(label):
+                instrs = [Jump(label)]
+            case If(Compare(atm1, [cmp], [atm2]), [Goto(label1)], [Goto(label2)]):
+                cc = self.cmp_helper(cmp)
+                instrs = [Instr("cmpq", [self.select_arg(atm2), self.select_arg(atm1)])]
+                instrs.append(JumpIf(cc, label1))
+                instrs.append(Jump(label2))
+            case Return(expr):
+                #TODO I need to assign exp to %rax, but that would requiring
+                # a lot modifies to assign_helper.
+                # The reason is that i hard code and assumed every target is a variable.
+                instrs = self.assign_helper("rax", expr, Variable=Reg)
+                # instrs = self.assign_helper
+                instrs.append(Jump("conclusion"))
+                #TODO depend on a little conclusion
+        return instrs
                 
 
-    def select_instructions(self, p: Module) -> X86Program:
+    def select_instructions(self, p: Module | CProgram) -> X86Program:
         match p:
             case Module(body):
                 new_body = []
@@ -469,6 +512,15 @@ class Compiler:
                 # new_body = self.patch_instrs(new_body)
                 # print("patch_instructions PASS:")
                 # print(X86Program(new_body))
+                return X86Program(new_body)
+            case CProgram(body):
+                new_body = {}
+                for (k,v) in body.items():
+                    new_body_temp = [self.select_stmt(stmt) for stmt in v]
+                    stmts_temp = []
+                    for stmts in new_body_temp:
+                        stmts_temp += stmts
+                    new_body[k] = stmts_temp
                 return X86Program(new_body)
 
     ############################################################################
