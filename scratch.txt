@@ -1,0 +1,17 @@
+procedure uncover_live(blks_instr):
+  builds cfg for instrs
+  get reverse topological sorting rev_topo for cfg
+
+  instr_la_map <- {}
+  live_before_block <- {}
+  
+
+  for every block in rev_topo do
+    instrs <- blks_instr(block)
+    
+    for every instruction i of instrs in reverse order do
+      live_after_set_temp <- compute_la(i, instr_la_map, live_before_block)
+      instr_la_map(block, index of i) <- live_after_set_temp
+  
+procedure compute_live_after(instrs, index, la_map, lb_block):
+  

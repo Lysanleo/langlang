@@ -1,14 +1,42 @@
 import compiler
-from graph import UndirectedAdjList
+from graph import *
 from typing import List, Tuple, Set, Dict
 from ast import *
 from x86_ast import *
-from typing import Set, Dict, Tuple
+from typing import Set, Dict, Tuple, List
 from priority_queue import PriorityQueue
 
+Label = str
 # Skeleton code for the chapter on Register Allocation
 
 class Compiler(compiler.Compiler):
+
+    ###########################################################################
+    # CFG
+    ###########################################################################
+
+    def __get_jump(self, instrs: List[Instr]) -> List[str]:
+        labels = []
+        for ins in instrs:
+            match ins:
+                case Jump(label):
+                    labels.append(label)
+                case JumpIf(_, label):
+                    labels.append(label)
+                case _:
+                    pass
+        return labels
+
+    def build_CFG(self, instrs:Dict[str, List[Instr]]) -> List[Vertex]:
+        cfg = DirectedAdjList()
+        for label, inss in instrs.items():
+            labels = self.__get_jump(inss)
+            if labels:
+                for in_v in labels: 
+                    cfg.add_edge(label, in_v)
+            else:
+                cfg.add_vertex(label)
+        return cfg
 
     ###########################################################################
     # Uncover Live
@@ -19,23 +47,29 @@ class Compiler(compiler.Compiler):
                          Reg('r9'),Reg('r10'),Reg('r11')]
     argument_regs = [Reg('rdi'), Reg('rsi'), Reg('rdx'),
                      Reg('rcx'), Reg('r8'), Reg('r9')]
+    byte_regs = [ByteReg(name) for name in ['ah', 'al', 'bh', 'bl', 'ch', 'cl', 'dh', 'dl']]
+    set_instrs = ["set"+cc for cc in ['e' , 'ne' , 'l' , 'le' , 'g' , 'ge']]
 
     def get_arg_vars(self, args) -> Set[location]:
-        return {a for a in args if isinstance(a, (Deref, Reg, Variable))}
+        return {a for a in args if isinstance(a, (Deref, Reg, Variable, ByteReg))}
 
     def arg_vars(self, i: instr) -> Set[location]:
         match i:
             case Instr('addq', [arg1, arg2]) |\
-                 Instr('subq', [arg1, arg2]):
+                 Instr('subq', [arg1, arg2]) |\
+                 Instr('movq', [arg1, arg2]) |\
+                 Instr('xorq', [arg1, arg2]) |\
+                 Instr('cmpq', [arg1, arg2]) |\
+                 Instr('movzbq', [arg1, arg2]):
                 return self.get_arg_vars([arg1, arg2])
-            case Instr('movq', [arg1, arg2]):
-                return self.get_arg_vars([arg1, arg2])
-            case Instr('negq', [arg1]):
+            case Instr('negq', [arg1])  |\
+                 Instr('pushq', [arg1]) |\
+                 Instr('popq', [arg1]):
                 return self.get_arg_vars([arg1])
-            case Instr('pushq', [arg1]):
+            case Instr(sets, [arg1]) if sets in self.set_instrs:
                 return self.get_arg_vars([arg1])
-            case Instr('popq', [arg1]):
-                return self.get_arg_vars([arg1])
+            case JumpIf(_, label):
+                return set()
 
     def read_vars(self, i: instr) -> Set[location]:
         match i:
@@ -44,12 +78,21 @@ class Compiler(compiler.Compiler):
                 return self.get_arg_vars([arg1, arg2])
             case Instr('movq', [arg1, arg2]):
                 return self.get_arg_vars([arg1])
-            case Instr('negq', [arg1]):
+            case Instr('negq', [arg1])  |\
+                 Instr('pushq', [arg1]) |\
+                 Instr('popq', [arg1]):
                 return self.get_arg_vars([arg1])
-            case Instr('pushq', [arg1]):
+            #TODO 下面关于Lif的部分先乱写
+            case Instr('xorq', [arg1, arg2]):
+                return self.get_arg_vars([arg1, arg2])
+            case Instr('cmpq', [arg1, arg2]):
+                return self.get_arg_vars([arg1, arg2])
+            case Instr('movzbq', [arg1, arg2]):
+                return self.get_arg_vars([arg1, arg2])
+            case Instr(sets, [arg1]) if sets in self.set_instrs:
                 return self.get_arg_vars([arg1])
-            case Instr('popq', [arg1]):
-                return self.get_arg_vars([arg1])
+            case JumpIf(_, label):
+                return set()
             case Callq(_, n):
                 return set(self.argument_regs[0:n]) # [0:arity] of argument regs
             case Retq() |\
@@ -64,33 +107,64 @@ class Compiler(compiler.Compiler):
             case Callq(_, _):
                 return set(self.caller_saved_regs)
             case Retq() |\
-                 Jump(): 
+                 Jump() |\
+                 JumpIf(): 
                 return set()
-
 
     # L_after(n) = empty when n equals len(instr_list)
     # L_after(k) = L_before(k + 1)
-    def compute_la(self, instrs, index: int, map) -> Set[location]:
-        if index == len(instrs) - 1: # instrs[index] is the last instr
-            return set() # The last instr's L_after = empty
-        else:                        # Compute L_before(k+1)
-            i = instrs[index+1] # L[index + 1]
-            return  (map[i] - self.write_vars(i)) | self.read_vars(i) # L_before(index+1)
-        
-
-    def uncover_live(self, p: X86Program) -> Dict[instr, Set[location]]:
-        # L_after :: la
-        instr_la_map : Dict[instr, Set[location]] = {}
-        match p:
-            case X86Program(instrs):
-                if 'main' in instrs.keys():
-                    instrs = instrs['main']
+    # TODO To be Capable with x86if
+    def compute_la(self, instrs:List[Instr], index:int,
+                   la_map:Dict[int,Set[location]], lb_block:Dict[str,Set[location]]):
+        i = instrs[index]
+        res = set()
+        instr_num = len(instrs) 
+        match i:
+            case Jump(label):
+                res = lb_block[label]
+            case JumpIf(_, label):
+                next_lb = set()
+                if (index == instr_num - 1):
+                    next_lb = set()
                 else:
-                    instrs = instrs
-                btof = list(range(len(instrs)))
-                btof.reverse()
-                for i in btof:
-                    instr_la_map[instrs[i]] = self.compute_la(instrs, i, instr_la_map)
+                    i = instrs[index+1]
+                    next_lb = (la_map[index+1] - self.write_vars(i)) | self.read_vars(i)
+                res = lb_block[label] | next_lb
+            case _:
+                if index == len(instrs) - 1:
+                    res = set()
+                else: # Compute L_before(k+1)
+                    res = (la_map[index+1] - self.write_vars(i)) | self.read_vars(i)
+        return res
+    
+    cfg = None
+    # TODO
+    # 1. Modify the instr_la_map to Dict[label, Dict[int, Set[location]]]
+    def uncover_live(self, p: X86Program) -> Dict[Label, Dict[int, Set[location]]]:
+        # L_after :: la
+        live_before_block : Dict[Label, Set[location]] = {}
+        match p:
+            case X86Program(instrs) if isinstance(instrs, Dict):
+                instr_la_map : Dict[Label, Dict[int, Set[location]]] = \
+                        dict([(key, {}) for key in instrs.keys()])
+                self.cfg = self.build_CFG(instrs)
+                rev_topo = topological_sort(transpose(self.cfg))
+                # rev_topo.remove("conclusion")
+                # Traverse the reverse topo
+                # Append live_before_block and live_after_map
+                for blk in rev_topo:
+                    inss = instrs[blk]
+                    # print(blk)
+                    if inss == []: live_before_block[blk] = set()
+                    intr_num = len(inss)
+                    btof = list(range(intr_num))
+                    btof.reverse()
+                    # From n-1 to 0
+                    for i in btof:
+                        instr_la_map[blk][i] = \
+                                    self.compute_la(inss, i, instr_la_map[blk], live_before_block)
+                        if i == 0: live_before_block[blk] = instr_la_map[blk][i]
+        print(instr_la_map)
         return instr_la_map
 
 
@@ -99,40 +173,43 @@ class Compiler(compiler.Compiler):
     ############################################################################
 
     def build_interference(self, p: X86Program,
-                           live_after: Dict[instr, Set[location]]) -> UndirectedAdjList:
+                           live_after: Dict[Label, Dict[int, Set[location]]]) -> UndirectedAdjList:
         inter_graph = UndirectedAdjList()
         body = p.get_body()
+        topo = topological_sort(self.cfg)
         instrs = []
-        if isinstance(body, dict):
-            # main instr only
-            instrs = body['main']
-        else:
-            instrs = body
-
-        # Add edges
-        for i in instrs:
-            match i:
-                case Callq(_,_):
-                    # pass
-                    for v in live_after[i]:
-                        for creg in self.caller_saved_regs:
-                            inter_graph.add_edge(v, creg)
-                case Instr('movq', [arg1, arg2]):
-                    for v in live_after[i]:
-                        if v != arg1 and v != arg2:
-                            inter_graph.add_edge(v, arg2)
-                        inter_graph.add_vertex(v)
-                case _:
-                    for v in live_after[i]:
-                        for d in self.write_vars(i):
-                            # v != d
-                            if d != v:
-                                inter_graph.add_edge(v, d)
-                        inter_graph.add_vertex(v)
-    
+        # if isinstance(body, dict):
+            # for blk in topo:
+                # pass
+        for blk in topo:
+            instrs = body[blk]
+            for i in range(len(body[blk])):
+                match instrs[i]:
+                    case Callq(_,_):
+                        for v in live_after[blk][i]:
+                            for creg in self.caller_saved_regs:
+                                inter_graph.add_edge(v,creg)
+                    case Instr('movq', [arg1, arg2]):
+                        for v in live_after[blk][i]:
+                            if v != arg1 and v != arg2:
+                                inter_graph.add_edge(v, arg2)
+                            inter_graph.add_vertex(v)
+                    case Instr('movzbq', [arg1, arg2]):
+                        for v in live_after[blk][i]:
+                            if v != arg1 and v != arg2:
+                                inter_graph.add_edge(v, arg2)
+                            inter_graph.add_vertex(v)
+                    case _:
+                        for v in live_after[blk][i]:
+                            print(i)
+                            for d in self.write_vars(instrs[i]):
+                                # v != d
+                                if d != v:
+                                    inter_graph.add_edge(v, d)
+                            inter_graph.add_vertex(v)
         # v_list = {s for i in instrs for s in live_after[i]}
         return inter_graph
-
+    
     ############################################################################
     # Allocate Registers
     ############################################################################
@@ -154,6 +231,7 @@ class Compiler(compiler.Compiler):
             print(f"{k} |-> {v[0]}")
 
     # Returns the coloring and the set of spilled variables.
+    # TODO: Handle stack allocate
     def color_graph(self, graph: UndirectedAdjList,
                     variables: Set[location]) -> Tuple[Dict[location, int], Set[location]]:
         # BUG : Hard Code reg_map
@@ -214,19 +292,24 @@ class Compiler(compiler.Compiler):
             
     def replace_in_instr(self, i: instr, color) -> instr:
         match i:
-            case Instr(cmd, [arg1, arg2]) if cmd in self.instrs_two:
+            # case Instr(cmd, [arg1, arg2]) if cmd in self.instrs_two:
+            case Instr(cmd, [arg1, arg2]):
                 return Instr(cmd, [self.select_color(arg1, color), self.select_color(arg2, color)])
-            case Instr(cmd, [arg1]) if cmd in self.instrs_one:
+            # case Instr(cmd, [arg1]) if cmd in self.instrs_one:
+            case Instr(cmd, [arg1]):
                 return Instr(cmd, [self.select_color(arg1, color)])
             case _:
                 return i
 
+    # TODO body can be dict of block, modify it.
     def allocate_registers(self, p: X86Program,
                            graph: UndirectedAdjList) -> X86Program:
-        body = p.get_body()
         color = self.color_graph(graph, self.get_variables(graph))
-        ss = [self.replace_in_instr(i) for i in body]
-        x86prog = X86Program(ss)
+        body = p.get_body()
+        for block,instrs in body.items():
+            body[block] = [self.replace_in_instr(i, color) for i in instrs]
+        # print("colored instrs:")
+        x86prog = X86Program(body)
         return x86prog
 
     # ############################################################################
@@ -235,6 +318,8 @@ class Compiler(compiler.Compiler):
 
     def assign_homes(self, pseudo_x86: X86Program) -> X86Program:
         graph = self.build_interference(pseudo_x86, self.uncover_live(pseudo_x86))
+        print("Graph")
+        print(graph)
         x86prog = self.allocate_registers(pseudo_x86, graph)
         return x86prog
 
@@ -243,9 +328,7 @@ class Compiler(compiler.Compiler):
     # ###########################################################################
 
     def patch_instructions(self, p: X86Program) -> X86Program:
-        body = p.get_body()
-        new_body = self.patch_instrs(body)
-        x86prog = X86Program(new_body)
+        x86prog = super().patch_instructions(p)
         return x86prog
 
     # ###########################################################################
