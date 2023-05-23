@@ -280,8 +280,8 @@ class Compiler:
                 goto_body = self.create_block(goto_then, basic_blocks)
                 goto_orelse = self.create_block(goto_else, basic_blocks)
                 new_test = self.explicate_pred(test, body.body+goto_body, orelse.body+goto_orelse, basic_blocks)
-                print("new test:")
-                print(new_test)
+                # print("new test:")
+                # print(new_test)
                 # cont = self.create_block(cont, basic_blocks)
                 return new_test
             case Begin(body, result):
@@ -300,11 +300,12 @@ class Compiler:
             case If(test, body, orelse):
                 # Similar to IfExp
                 # If(Compare(atm,[cmp],[atm]), [Goto(label)], [Goto(label)])
-                goto_body = self.create_block(body, basic_blocks)
-                goto_orelse = self.create_block(orelse, basic_blocks)
+                goto_cont = self.create_block(cont, basic_blocks)
+                goto_body = self.create_block(body+goto_cont, basic_blocks)
+                goto_orelse = self.create_block(orelse+goto_cont, basic_blocks)
                 return [If(test, goto_body, goto_orelse)]
 
-    def explicate_control(self, p:Module):
+    def explicate_control(self, p:Module) -> CProgram(Dict[Label, Stmts]):
         match p:
             case Module(body):
                 new_body = [Return(Constant(0))]
@@ -506,21 +507,17 @@ class Compiler:
                     new_body = new_body + stmts
                 print("select_instruciton PASS:")
                 print(X86Program(new_body))
-                # new_body = self.assign_homes_instrs(new_body, {})
-                # print("assign_homes PASS:")
-                # print(X86Program(new_body))
-                # new_body = self.patch_instrs(new_body)
-                # print("patch_instructions PASS:")
-                # print(X86Program(new_body))
                 return X86Program(new_body)
             case CProgram(body):
-                new_body = {}
+                new_body:Dict[str, List[instr]] = {}
                 for (k,v) in body.items():
                     new_body_temp = [self.select_stmt(stmt) for stmt in v]
                     stmts_temp = []
                     for stmts in new_body_temp:
                         stmts_temp += stmts
                     new_body[k] = stmts_temp
+                new_body["main"] = []
+                new_body["conclusion"] = []
                 return X86Program(new_body)
 
     ############################################################################
@@ -553,9 +550,11 @@ class Compiler:
     def assign_homes_instr(self, i: instr,
                            home: Dict[Variable, arg]) -> instr:
         match i:
-            case Instr(cmd, [arg1, arg2]) if cmd in self.instrs_two:
+            # case Instr(cmd, [arg1, arg2]) if cmd in self.instrs_two:
+            case Instr(cmd, [arg1, arg2]):
                 return Instr(cmd, [self.assign_homes_arg(arg1, home), self.assign_homes_arg(arg2, home)])
-            case Instr(cmd, [arg1]) if cmd in self.instrs_one:
+            # case Instr(cmd, [arg1]) if cmd in self.instrs_one:
+            case Instr(cmd, [arg1]):
                 return Instr(cmd, [self.assign_homes_arg(arg1, home)])
             case _:
                 return i
@@ -584,14 +583,25 @@ class Compiler:
     def patch_instr(self, i: instr) -> List[instr]:
         instrs = []
         match i:
-            case Instr(cmd, [arg1, arg2]) if cmd in self.instrs_two:
+            case Instr('movzbq', [arg1, arg2]):
+                if isinstance(arg2, Variable):
+                    instrs.append(Instr('movzbq', [arg1, Reg('rax')]))
+                    instrs.append(Instr('movq', [Reg('rax'), arg2]))
+            # case Instr(cmd, [arg1, arg2]) if cmd in self.instrs_two:
+            case Instr(cmd, [arg1, arg2]):
                 match (arg1, arg2):
-                    case (Deref(_) as d1, Deref(_) as d2) if d1 == d2 and cmd == 'movq':
-                        instrs.append(i)
+                    # Eq to delete the instruction
+                    case (Deref(_) as d1, Deref(_) as d2) \
+                                    if d1 == d2 and cmd in ['movq', 'cmpq']:
+                        pass
                     case (Deref(_) as d1, Deref(_) as d2):
                         instrs.append(Instr('movq', [arg1, Reg('rax')]))
                         instrs.append(Instr(cmd, [Reg('rax'), arg2]))
-                    case (Immediate(x), _):
+                    case (Immediate(x), y):
+                        # cmpq
+                        if (isinstance(y, Immediate) and cmd == "cmpq"):
+                            instrs.append(Instr('movq', [arg1, Reg('rax')]))
+                            instrs.append(Instr(cmd, [Reg('rax'), arg2]))
                         if (x > 2**16):
                             instrs.append(Instr('movq', [arg1, Reg('rax')]))
                             instrs.append(Instr(cmd, [Reg('rax'), arg2]))
@@ -599,8 +609,7 @@ class Compiler:
                             instrs.append(i)
                     case _:
                         instrs.append(i)
-                return instrs
-            case Instr(cmd, [arg1]) if cmd in self.instrs_one:
+            case Instr(cmd, [arg1]):
                 match arg1:
                     case Immediate(x):
                         if (x > 2**16):
@@ -610,9 +619,9 @@ class Compiler:
                             instrs.append(i)
                     case _:
                         instrs.append(i)
-                return instrs
             case _:
-                return [i]
+                instrs.append(i)
+        return instrs
                 
                         
 
@@ -625,8 +634,9 @@ class Compiler:
     def patch_instructions(self, p: X86Program) -> X86Program:
         match p:
             case X86Program(body):
-                new_body = self.patch_instrs(body)
-                x86prog = X86Program(new_body)
+                for block, instrs in body.items():
+                    body[block] = self.patch_instrs(instrs)
+                x86prog = X86Program(body)
                 x86prog.stack_space = p.stack_space
                 x86prog.home = p.home
                 return x86prog
@@ -651,4 +661,3 @@ class Compiler:
                 x86prog.stack_space = p.stack_space
                 x86prog.home = p.home
                 return x86prog
-
