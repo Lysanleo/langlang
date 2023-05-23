@@ -18,6 +18,7 @@ def interp_exp(e):
         case _:
             raise Exception('error in interp_exp, unexpected ' + repr(e))
 
+
 def interp_stmt(s):
     match s:
         case Expr(Call(Name('print'), [arg])):
