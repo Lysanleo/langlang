@@ -651,8 +651,8 @@ class Compiler:
                 temp1 = []
                 temp2 = []
                 for r in p.used_callee:
-                    temp1.append(Instr('pushq', [Reg(r)]))
-                    temp2.append(Instr('popq', [Reg(r)]))
+                    temp1.append(Instr('pushq', [r]))
+                    temp2.append(Instr('popq', [r]))
                 temp2.reverse
 
                 # Prelude Main
