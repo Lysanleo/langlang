@@ -19,11 +19,13 @@ typecheck_Lvar = type_check_Lvar.TypeCheckLvar().type_check
 
 typecheck_dict = {
     'source': typecheck_Lvar,
-    'remove_complex_operands': typecheck_Lvar,
+    'shrink': typecheck_Lvar,
+    'remove_complex_operands': typecheck_Lvar
 }
 interpLvar = interp_Lvar.InterpLvar().interp
 interp_dict = {
     'remove_complex_operands': interpLvar,
+    'shrink': interpLvar,
     'select_instructions': interp_x86,
     'assign_homes': interp_x86,
     'patch_instructions': interp_x86,
@@ -48,6 +50,8 @@ interp_if_dict = {
     'remove_complex_operands': interpLif,
     'explicate_control': interpCif,
     'select_instructions': interp_x86,
+    'assign_homes': interp_x86,
+    'patch_instructions': interp_x86,
 }
 
 if False:
@@ -58,10 +62,10 @@ if False:
                  typecheck_dict,
                  interp_dict)
 else:
-    enable_tracing()
-    run_tests('if', compiler_register, 'if',
-              typecheck_if_dict,
-              interp_if_dict)
+    # enable_tracing()
+    # run_tests('if', compiler_register, 'if',
+            #   typecheck_if_dict,
+            #   interp_if_dict)
     run_tests('var', compiler_register, 'var',
               typecheck_dict,
               interp_dict)

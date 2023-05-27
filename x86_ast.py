@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Set
 
 from utils import dedent, indent, indent_stmt, label_name
 
@@ -12,15 +12,13 @@ class X86Program:
     body: dict[str, list[instr]] | list[instr]
     stack_space = 0
     home = {}
+    used_callee = set()
 
     # def __init__(self):
     #     self.stack_space = 0
 
     def get_body(self):
         return self.body
-
-    def get_(self):
-        return self.home
 
     def __str__(self):
         result = ''
