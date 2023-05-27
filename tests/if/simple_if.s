@@ -17,23 +17,23 @@ block.11:
 
 	.align 16
 block.12:
-    cmpq $0, %rdx
+    cmpq $0, %r12
     je block.10
     jmp block.11
 
 	.align 16
 block.13:
-    cmpq $2, %rdx
+    cmpq $2, %r12
     je block.10
     jmp block.11
 
 	.align 16
 start:
     callq read_int
-    movq %rax, %rdx
+    movq %rax, %r12
     callq read_int
     movq %rax, %rcx
-    cmpq $1, %rdx
+    cmpq $1, %r12
     jl block.12
     jmp block.13
 
@@ -42,12 +42,14 @@ start:
 main:
     pushq %rbp
     movq %rsp, %rbp
-    subq $0, %rsp
+    pushq %r12
+    subq $8, %rsp
     jmp start
 
 	.align 16
 conclusion:
-    addq $0, %rsp
+    addq $8, %rsp
+    popq %r12
     popq %rbp
     retq
 

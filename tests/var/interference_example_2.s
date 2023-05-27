@@ -1,14 +1,13 @@
 	.align 16
 start:
-    movq $1, %rdx
-    movq $42, %rcx
-    addq $7, %rdx
-    movq %rdx, %rsi
-    addq %rcx, %rdx
-    movq %rsi, %rcx
-    negq %rcx
-    addq %rcx, %rdx
-    movq %rdx, %rdi
+    movq $1, %rcx
+    movq $42, %rsi
+    addq $7, %rcx
+    movq %rcx, %rdx
+    addq %rsi, %rcx
+    negq %rdx
+    addq %rdx, %rcx
+    movq %rcx, %rdi
     callq print_int
     movq $0, %rax
     jmp conclusion
