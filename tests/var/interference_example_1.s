@@ -1,7 +1,11 @@
 	.align 16
 start:
-    movq $40, %rcx
-    addq $2, %rcx
+    callq read_int
+    movq %rax, %rcx
+    callq read_int
+    movq %rax, %rdx
+    addq %rcx, %rcx
+    addq $42, %rcx
     movq %rcx, %rdi
     callq print_int
     movq $0, %rax

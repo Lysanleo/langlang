@@ -67,7 +67,7 @@ class Compiler:
     def shrink(self, p:Module) -> Module:
         match p:
             case Module(body):
-                print(body)
+                # print(body)
                 new_body = [self.shrink_stmt(s) for s in body]
         return Module(new_body)
 
@@ -146,7 +146,7 @@ class Compiler:
                 atm1 = self.rco_exp(e1, False)
                 ss1 = self.rco_stmt(Expr(e2))
                 ss2 = self.rco_stmt(Expr(e3))
-                print("ss1:", ss1)
+                # print("ss1:", ss1)
                 new_expr = IfExp(atm1[0], Begin(ss1[0:len(ss1)-1], ss1[len(ss1)-1].value),
                                           Begin(ss2[0:len(ss1)-1], ss2[len(ss2)-1].value))
                 new_bindings = atm1[1]
@@ -208,7 +208,7 @@ class Compiler:
                 # print(new_body_temp == [None]) => True
                 for stmts in new_body_temp:
                     new_body = new_body + stmts
-                print(new_body)
+                # print(new_body)
                 return Module(new_body)
         
     ############################################################################
@@ -313,7 +313,7 @@ class Compiler:
                 for s in reversed(body):
                     new_body = self.explicate_stmt(s, new_body, basic_blocks)
                 basic_blocks[label_name('start')] = new_body
-                print(basic_blocks)
+                # print(basic_blocks)
                 return CProgram(basic_blocks)
 
     ############################################################################
@@ -505,8 +505,8 @@ class Compiler:
                 new_body_temp = [self.select_stmt(stmt) for stmt in body]
                 for stmts in new_body_temp:
                     new_body = new_body + stmts
-                print("select_instruciton PASS:")
-                print(X86Program(new_body))
+                # print("select_instruciton PASS:")
+                # print(X86Program(new_body))
                 return X86Program(new_body)
             case CProgram(body):
                 new_body:Dict[str, List[instr]] = {}
@@ -516,8 +516,8 @@ class Compiler:
                     for stmts in new_body_temp:
                         stmts_temp += stmts
                     new_body[k] = stmts_temp
-                new_body["main"] = []
-                new_body["conclusion"] = []
+                # new_body["main"] = []
+                # new_body["conclusion"] = []
                 return X86Program(new_body)
 
     ############################################################################
@@ -571,7 +571,7 @@ class Compiler:
                 new_body = self.assign_homes_instrs(body, home)
                 x86prog = X86Program(new_body)
                 stack_space = math.ceil(abs(self.calculate_offset(home)) / 16) * 16
-                print(stack_space)
+                # print(stack_space)
                 x86prog.stack_space = stack_space
                 x86prog.home = home
                 return x86prog
@@ -591,8 +591,8 @@ class Compiler:
             case Instr(cmd, [arg1, arg2]):
                 match (arg1, arg2):
                     # Eq to delete the instruction
-                    case (Deref(_) as d1, Deref(_) as d2) \
-                                    if d1 == d2 and cmd in ['movq', 'cmpq']:
+                    # case (Deref(_) as d1, Deref(_) as d2) \
+                    case (d1, d2) if d1 == d2 and cmd in ['movq']:
                         pass
                     case (Deref(_) as d1, Deref(_) as d2):
                         instrs.append(Instr('movq', [arg1, Reg('rax')]))
@@ -622,8 +622,6 @@ class Compiler:
             case _:
                 instrs.append(i)
         return instrs
-                
-                        
 
     def patch_instrs(self, ss: List[instr]) -> List[instr]:
         ss = [self.patch_instr(i) for i in ss]
@@ -636,7 +634,7 @@ class Compiler:
             case X86Program(body):
                 for block, instrs in body.items():
                     body[block] = self.patch_instrs(instrs)
-                x86prog = X86Program(body)
+                x86prog = p
                 x86prog.stack_space = p.stack_space
                 x86prog.home = p.home
                 return x86prog
@@ -644,20 +642,32 @@ class Compiler:
     ############################################################################
     # Prelude & Conclusion
     ############################################################################
-
+    
+    # TODO
+    # - `push` and `pop` for callee saved registers
     def prelude_and_conclusion(self, p: X86Program) -> X86Program:
         match p:
             case X86Program(body):
-                new_body = body
-                # Prelude
-                new_body = [Instr('pushq', [Reg('rbp')])
-                           , Instr('movq', [Reg('rsp'), Reg('rbp')])
-                           , Instr('subq', [Immediate(p.stack_space), Reg('rsp')])] + new_body
+                temp1 = []
+                temp2 = []
+                for r in p.used_callee:
+                    temp1.append(Instr('pushq', [Reg(r)]))
+                    temp2.append(Instr('popq', [Reg(r)]))
+                temp2.reverse
+
+                # Prelude Main
+                body['main'] = [Instr('pushq', [Reg('rbp')])
+                               , Instr('movq', [Reg('rsp'), Reg('rbp')])] \
+                               + temp1 \
+                               + [Instr('subq', [Immediate(p.stack_space), Reg('rsp')]), Jump("start")]
+
                 # Conclusion
-                new_body.append(Instr('addq', [Immediate(p.stack_space), Reg('rsp')]))
-                new_body.append(Instr('popq', [Reg('rbp')]))
-                new_body.append(Retq())
-                x86prog = X86Program({'main':new_body})
-                x86prog.stack_space = p.stack_space
-                x86prog.home = p.home
-                return x86prog
+                body["conclusion"] =[Instr('addq', [Immediate(p.stack_space), Reg('rsp')])] \
+                                    + temp2 \
+                                    + [Instr('popq', [Reg('rbp')])
+                                      , Retq()]
+
+                # x86prog = X86Program(body)
+                # x86prog.stack_space = p.stack_space
+                # x86prog.home = p.home
+                return p
