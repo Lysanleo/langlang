@@ -88,7 +88,7 @@ else:
                  'var',
                  typecheck_dict,
                  interp_dict)
-    # enable_tracing()
+    enable_tracing()
     # run_tests('if', compiler_register, 'if',
             #   typecheck_if_dict,
             #   interp_if_dict)

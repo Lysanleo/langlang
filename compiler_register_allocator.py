@@ -251,8 +251,14 @@ class Compiler(compiler.Compiler):
         regints:set[int] =set(range(len(reg_map)))
         location_reg_map = {}
         spilled_variables = set()
+        
+        def get_adjacent_reg_map_int(variable: Variable) -> set[location]:
+            regs = set(reg_map.values())
+            edged_caller_regs = regs & set(graph.adjacent(variable))
+            caller_reg_ints = {i for i in reg_map if reg_map[i] in edged_caller_regs}
+            return caller_reg_ints
         # Indicate the saturation for each variables
-        L = {l:[None, set()] for l in variables}
+        L = {l:[None, get_adjacent_reg_map_int(l)] for l in variables}
 
         # Define sasturated_node_Q
         # Provide most saturated vertex in interference graph
@@ -296,9 +302,6 @@ class Compiler(compiler.Compiler):
             # self.pretty_print_vrmap(L)
             # print("\n")
         location_reg_map = {k:v[0] for k,v in L.items()}
-
-        print(location_reg_map)
-        print(list(graph.out_edges(Variable("x"))))
 
         # self.pretty_print_vrmap(L)
         # return (lrmap, set(L.keys()))
