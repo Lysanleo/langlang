@@ -1,4 +1,4 @@
 x = input_int()
 y = input_int()
-print((x+x)+42)
+print((x+y)+42)
 
