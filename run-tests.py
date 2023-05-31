@@ -62,7 +62,7 @@ if False:
                  typecheck_dict,
                  interp_dict)
 else:
-    # enable_tracing()
+    enable_tracing()
     run_tests('if', compiler_register, 'if',
               typecheck_if_dict,
               interp_if_dict)
