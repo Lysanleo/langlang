@@ -317,7 +317,19 @@ class Compiler:
                 goto_cont = self.create_block(cont, basic_blocks)
                 goto_body = self.create_block(body+goto_cont, basic_blocks)
                 goto_orelse = self.create_block(orelse+goto_cont, basic_blocks)
+                # TODO Using explicate_pred
                 return [If(test, goto_body, goto_orelse)]
+            case While(cond, body, _):
+                # 为代表while的if手动创建一个block使得可以body block可以在goto中访问
+                goto_while = self.create_block([], basic_blocks)
+
+                goto_cont = self.create_block(cont, basic_blocks)
+                # Add goto while_label in the end of the body instructions block
+                goto_body = self.create_block(body+goto_while, basic_blocks)
+                # bind while_label with actual corresponding Cif statements
+                basic_blocks[goto_while[0].label] = self.explicate_pred(cond,goto_body,goto_cont,basic_blocks)
+                # return goto while_label
+                return goto_while
 
     def explicate_control(self, p:Module) -> CProgram(Dict[Label, Stmts]):
         match p:
@@ -383,7 +395,6 @@ class Compiler:
                  | BinOp(Constant(y) as atm1, Add(), Name(x) as var1) ):
                 if x == target:
                     return [Instr('addq', [select_arg(atm1), Variable(x)])]
-                # TODO
                 instrs = instrs + [Instr('movq', [x86_ast.Variable(x), Variable(target)])]
                 instrs = instrs + [Instr('addq', [select_arg(atm1), Variable(target)])]
                 return instrs
@@ -413,7 +424,6 @@ class Compiler:
                 return instrs
             # var = atm1 - var1
             case BinOp(Constant(y) as atm1, Sub(), Name(x) as var1):
-                # TODO
                 instrs = instrs + [Instr('movq', [select_arg(atm1), Variable(target)])]
                 instrs = instrs + [Instr('subq', [Variable(x), Variable(target)])]
                 return instrs
@@ -657,8 +667,6 @@ class Compiler:
     # Prelude & Conclusion
     ############################################################################
     
-    # TODO
-    # - `push` and `pop` for callee saved registers
     def prelude_and_conclusion(self, p: X86Program) -> X86Program:
         match p:
             case X86Program(body):
