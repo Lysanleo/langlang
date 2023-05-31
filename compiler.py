@@ -181,8 +181,8 @@ class Compiler:
                 # print(new_exprs)
                 return new_exprs
             # L_if
-            case If(e1, ss1, ss2):
-                rcotp = self.rco_exp(e1, False)
+            case If(cond, ss1, ss2):
+                rcotp = self.rco_exp(cond, False)
                 new_exprs = self.rco_flat(rcotp)
                 # print(ss1)
                 # print(ss2)
@@ -202,7 +202,15 @@ class Compiler:
                 return new_exprs
             # L_while
             case While(cond, ss1, _):
-                pass               
+                rcotp = self.rco_exp(cond, False)
+                new_exprs = self.rco_flat(rcotp)
+                new_ss1_temp = [self.rco_stmt(stm) for stm in ss1]
+                new_ss1 = []
+                for stmts in new_ss1_temp:
+                    if stmts:
+                        new_ss1 = new_ss1 + stmts
+                new_exprs.append(While(rcotp[0], new_ss1, []))
+                return new_exprs
 
     def remove_complex_operands(self, p: Module) -> Module:
         match p:
