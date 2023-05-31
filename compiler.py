@@ -109,7 +109,7 @@ class Compiler:
                 new_bindings = atm1[1] + atm2[1]
                 if need_atomic:
                     new_sym = generate_name("tmp")
-                    return (Name(new_sym), new_bindings + [([Name(new_sym)], new_expr)])
+                    return (Name(new_sym), new_bindings + [(Name(new_sym), new_expr)])
                 return (new_expr, new_bindings)
             case UnaryOp(USub(), atm):
                 atm1 = self.rco_exp(atm, True)
@@ -133,11 +133,13 @@ class Compiler:
                     new_sym = generate_name("tmp")
                     return (Name(new_sym), [(Name(new_sym), new_expr)])
                 return (e, [])
-            case Compare(latm, [cmp], [ratm]):
+            case Compare(latm, [cmp], [ratm]) as c:
+                print(ratm)
                 atm1 = self.rco_exp(latm, True)
                 atm2 = self.rco_exp(ratm, True)
                 new_expr = Compare(atm1[0], [cmp], [atm2[0]])
                 new_bindings = atm1[1] + atm2[1]
+                print(new_bindings)
                 if need_atomic:
                     new_sym = generate_name("tmp")
                     return (Name(new_sym), new_bindings + [(Name(new_sym), new_expr)])
@@ -178,6 +180,7 @@ class Compiler:
                 new_exprs.append(Assign([Name(var)], rcotp[0]))
                 # print(new_exprs)
                 return new_exprs
+            # L_if
             case If(e1, ss1, ss2):
                 rcotp = self.rco_exp(e1, False)
                 new_exprs = self.rco_flat(rcotp)
@@ -197,6 +200,9 @@ class Compiler:
                 # print(rcotp)
                 new_exprs.append(If(rcotp[0], new_ss1, new_ss2))
                 return new_exprs
+            # L_while
+            case While(cond, ss1, _):
+                pass               
 
     def remove_complex_operands(self, p: Module) -> Module:
         match p:
