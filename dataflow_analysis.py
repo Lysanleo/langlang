@@ -1,9 +1,12 @@
 from collections import deque
-from graph import transpose
+from graph import transpose, DirectedAdjList
 from functools import reduce
 from utils import trace
 
-def analyze_dataflow(G, transfer, bottom, join):
+def analyze_dataflow(G:DirectedAdjList,
+                     transfer,
+                     bottom,
+                     join):
     trans_G = transpose(G)
     mapping = {}
     for v in G.vertices():
