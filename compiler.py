@@ -317,8 +317,8 @@ class Compiler:
                 goto_cont = self.create_block(cont, basic_blocks)
                 goto_body = self.create_block(body+goto_cont, basic_blocks)
                 goto_orelse = self.create_block(orelse+goto_cont, basic_blocks)
-                # TODO Using explicate_pred
-                return [If(test, goto_body, goto_orelse)]
+                new_stmt = self.explicate_pred(test, goto_body, goto_orelse, basic_blocks)
+                return new_stmt
             case While(cond, body, _):
                 # 为代表while的if手动创建一个block使得可以body block可以在goto中访问
                 goto_while = self.create_block([], basic_blocks)
