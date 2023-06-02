@@ -3,9 +3,11 @@ import compiler
 import compiler_register_allocator
 import interp_Lvar
 import interp_Lif
+import interp_Lwhile
 import interp_Cif
 import type_check_Lvar
 import type_check_Lif
+import type_check_Lwhile
 import type_check_Cif
 from utils import enable_tracing, run_tests, run_one_test
 from interp_x86.eval_x86 import interp_x86
@@ -54,6 +56,28 @@ interp_if_dict = {
     'patch_instructions': interp_x86,
 }
 
+# Test Options for Lwhile
+
+typecheckLwhile = type_check_Lwhile.TypeCheckLwhile().type_check
+typecheckCwhile = typecheckCif
+interpLwhile = interp_Lwhile.InterpLwhile().interp
+interpCwhile = interpCif
+
+typecheck_while_dict = {
+    'source': typecheckLwhile,
+    'shrink': typecheckLwhile,
+    'remove_complex_operands': typecheckLwhile,
+    'explicate_control': typecheckCwhile
+}
+interp_while_dict = {
+    'shrink': interpLwhile,
+    'remove_complex_operands': interpLwhile,
+    'explicate_control': interpCwhile,
+    'select_instructions': interp_x86,
+    'assign_homes': interp_x86,
+    'patch_instructions': interp_x86,
+}
+
 if False:
     run_one_test(os.getcwd() + '/tests/var/zero.py',
                  'var',
@@ -69,4 +93,7 @@ else:
     run_tests('var', compiler_register, 'var',
               typecheck_dict,
               interp_dict)
+    run_tests('while', compiler_register, 'while',
+              typecheck_while_dict,
+              interp_while_dict)
 
