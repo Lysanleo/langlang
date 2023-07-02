@@ -121,68 +121,75 @@ class Compiler(compiler.Compiler):
 
     # L_after(n) = empty when n equals len(instr_list)
     # L_after(k) = L_before(k + 1)
+    # This function is pure.
+    # Do nothing except return live_after for index instr
     def compute_la(self,
                    instrs:List[Instr],
                    index:int,
                    la_map:Dict[int,Set[location]],
-                   lb_block:Dict[str,Set[location]]) -> Set[location]:
+                   la_for_block:Set[location],     # Capable with dataflow_analysis
+                   lb_block:Dict[Label, Set[location]]) -> Set[location]:
         i = instrs[index]
         res = set()
         instr_num = len(instrs) 
         match i:
             case Jump(label):
-                res = lb_block[label]
+                res = la_for_block
             case JumpIf(_, label):
                 next_lb = set()
                 if (index == instr_num - 1):
-                    next_lb = set()
+                    next_lb = la_for_block
                 else:
                     i = instrs[index+1]
                     next_lb = (la_map[index+1] - self.write_vars(i)) | self.read_vars(i)
                 res = lb_block[label] | next_lb
             case _:
-                if index == len(instrs) - 1:
-                    res = set()
+                if (index == instr_num - 1):
+                    res = la_for_block
                 else: # Compute L_before(k+1)
                     res = (la_map[index+1] - self.write_vars(i)) | self.read_vars(i)
         return res
     
-    
     cfg = None
-    # TODO
-    # 1. Modify the instr_la_map to Dict[label, Dict[int, Set[location]]]
+
     def uncover_live(self,
                      p: X86Program) -> Dict[Label, Dict[int, Set[location]]]:
         # L_after :: la
-        live_before_block : Dict[Label, Set[location]] = {}
         match p:
             case X86Program(instrs) if isinstance(instrs, Dict):
                 instr_la_map : Dict[Label, Dict[int, Set[location]]] = \
                         dict([(key, {}) for key in instrs.keys()])
-                def transfer(label:Label, liveafter:Set[location]):
+                self.cfg = self.build_CFG(instrs)
+                # TODO Initliaze it
+                live_before_block : Dict[Label, Set[location]] = {}
+                # Transfer for dataflow_analysis
+                def transfer(label:Label,
+                             liveafter:Set[location]) \
+                            -> Set[location]:
                     # Side Effects
                     # - Update live after set for each instrument
-                    pass
-                self.cfg = self.build_CFG(instrs)
-                rev_topo = topological_sort(transpose(self.cfg))
-                # rev_topo.remove("conclusion")
-                # Traverse the reverse topo
-                # Append live_before_block and live_after_map
-                for blk in rev_topo:
-                    # Handle main and conclusion block may be Empty
-                    if blk in ["conclusion", "main"]:
-                        live_before_block[blk] = set()
-                        continue
-                    inss = instrs[blk]
-                    # print(blk)
-                    intr_num = len(inss)
-                    btof = list(range(intr_num))
-                    btof.reverse()
-                    # From n-1 to 0
+                    # - Update live before block set for each block
+                    inss_len = len(inss)
+                    # instr_la_map[label][inss_len-1] = liveafter
+                    inss = instrs[label]
+                    btof = list(range(inss_len)).reverse()
                     for i in btof:
-                        instr_la_map[blk][i] = \
-                                    self.compute_la(inss, i, instr_la_map[blk], live_before_block)
-                        if i == 0: live_before_block[blk] = instr_la_map[blk][i]
+                        instr_la_map[label][i] =\
+                            self.compute_la(instrs[label],
+                                            i,
+                                            instr_la_map[label],
+                                            liveafter,
+                                            live_before_block)
+                        # Update live_before for block
+                        if i == 0:
+                            # Compute live before of index 0 instr infact.
+                            live_before_block[label] =\
+                                self.compute_la(instrs[label],
+                                                -1,
+                                                instr_la_map[label],
+                                                liveafter,
+                                                live_before_block)
+                analyze_dataflow(self.cfg, transfer, set(), set.union)
         # print(instr_la_map)
         # for i in range(len(instrs['start'])):
             # print(f"{instrs['start'][i]}                     {instr_la_map['start'][i]}")

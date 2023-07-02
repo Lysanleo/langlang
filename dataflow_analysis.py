@@ -2,10 +2,11 @@ from collections import deque
 from graph import transpose, DirectedAdjList
 from functools import reduce
 from utils import trace
+from typing import Set
 
 def analyze_dataflow(G:DirectedAdjList,
                      transfer,
-                     bottom,
+                     bottom:Set,
                      join):
     trans_G = transpose(G)
     mapping = {}
