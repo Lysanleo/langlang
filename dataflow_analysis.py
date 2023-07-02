@@ -17,10 +17,11 @@ def analyze_dataflow(G:DirectedAdjList,
         worklist.append(v)
     while worklist:
         node = worklist.pop()
-        input = reduce(join, [mapping[v] for v in trans_G.adjacent(node)], bottom)
+        # print(node, trans_G.adjacent(node))
+        input = reduce(join, [mapping[v] for v in G.adjacent(node)], bottom)
         output = transfer(node, input)
         if output != mapping[node]:
             mapping[node] = output
-            for v in G.adjacent(node):
+            for v in trans_G.adjacent(node):
                 worklist.append(v)
 

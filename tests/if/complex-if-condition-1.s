@@ -17,11 +17,11 @@ block.22:
 
 	.align 16
 start:
-    movq $1, %rcx
-    addq $2, %rcx
-    movq $3, %rdx
-    subq $1, %rdx
-    cmpq %rdx, %rcx
+    movq $1, %rdx
+    addq $2, %rdx
+    movq $3, %rcx
+    subq $1, %rcx
+    cmpq %rcx, %rdx
     jl block.21
     jmp block.22
 
