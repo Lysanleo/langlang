@@ -86,14 +86,14 @@ if False:
                  typecheck_dict,
                  interp_dict)
 else:
-    # enable_tracing()
-    run_tests('if', compiler_register, 'if',
-              typecheck_if_dict,
-              interp_if_dict)
+    enable_tracing()
+    # run_tests('if', compiler_register, 'if',
+            #   typecheck_if_dict,
+            #   interp_if_dict)
     # run_tests('var', compiler_register, 'var',
             #   typecheck_dict,
             #   interp_dict)
-    # run_tests('while', compiler_register, 'while',
-            #   typecheck_while_dict,
-            #   interp_while_dict)
+    run_tests('while', compiler_register, 'while',
+              typecheck_while_dict,
+              interp_while_dict)
 

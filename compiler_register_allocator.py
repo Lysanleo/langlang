@@ -113,6 +113,10 @@ class Compiler(compiler.Compiler):
             # W(i) = A(i) - R(i)
             case Instr('movq', [arg1, arg2]):
                 return set([arg2])
+            case Instr('addq', [arg1, arg2]) |\
+                 Instr('subq', [arg1, arg2]):
+                return set([arg2])
+            # BUG In this way, the build_interference will get wrong for it need a correct Write set of a instruction.
             case Instr(_):
                 return self.arg_vars(i) - self.read_vars(i)
             case Callq(_, _):
@@ -131,7 +135,8 @@ class Compiler(compiler.Compiler):
                    index:int,
                    la_map:Dict[int,Set[location]],
                    la_for_block:Set[location],     # Capable with dataflow_analysis
-                   lb_block:Dict[Label, Set[location]]) -> Set[location]:
+                   lb_block:Dict[Label, Set[location]]
+                  ) -> Set[location]:
         i = instrs[index] if index > -1 else instrs[0]
         res = set()
         instr_num = len(instrs) 
@@ -148,8 +153,10 @@ class Compiler(compiler.Compiler):
                 res = lb_block[label] | next_lb
             case _:
                 if (index == instr_num - 1):
+                    # The last instr
                     res = la_for_block
-                else: # Compute L_before(k+1)
+                else: # Compute L_before(k) for L_after(k) = L_before(k+1)
+                    i = instrs[index+1]
                     res = (la_map[index+1] - self.write_vars(i)) | self.read_vars(i)
         # if index == -1:
             # print(res, i)
@@ -158,7 +165,8 @@ class Compiler(compiler.Compiler):
     cfg = None
 
     def uncover_live(self,
-                     p: X86Program) -> Dict[Label, Dict[int, Set[location]]]:
+                     p: X86Program
+                    )-> Dict[Label, Dict[int, Set[location]]]:
         # L_after :: la
         match p:
             case X86Program(instrs) if isinstance(instrs, Dict):
@@ -168,9 +176,9 @@ class Compiler(compiler.Compiler):
                 live_before_block : Dict[Label, Set[location]] =\
                     {k:set() for k in instr_la_map.keys()}
                 # Transfer for dataflow_analysis
-                def transfer(label:Label,
-                             liveafter:Set[location]) \
-                            -> Set[location]:
+                def transfer(label : Label,
+                             liveafter : Set[location]
+                            ) -> Set[location]:
                     # Side Effects
                     # - Update live after set for each instrument
                     # - Update live before block set for each block
@@ -204,7 +212,8 @@ class Compiler(compiler.Compiler):
         # for i in range(len(instrs['start'])):
             # print(f"{instrs['start'][i]}                     {instr_la_map['start'][i]}")
         # print(instr_la_map)
-        print(live_before_block)
+        # print(live_before_block)
+        # print(instr_la_map["block.7"])
         return instr_la_map
 
 
@@ -212,16 +221,28 @@ class Compiler(compiler.Compiler):
     # Build Interference
     ############################################################################
 
-    def build_interference(self, p: X86Program,
-                           live_after: Dict[Label, Dict[int, Set[location]]]) -> UndirectedAdjList:
+    def build_interference(self,
+                           p: X86Program,
+                           live_after: Dict[Label, 
+                                            Dict[int, Set[location]]]
+                          ) -> UndirectedAdjList:
         inter_graph = UndirectedAdjList()
         body = p.get_body()
-        topo = topological_sort(self.cfg)
+        # BUG For while program, there exists cycle in cfg. So result of topo is not right
+        # Try fix it with acyclied the cfg
+        # Potential solution:
+        # uncover_live already provide each block and instr its live after
+        # [[IMPORTANT]]
+        # Maybe the order of block in building interference really doesn't matter? 
+        # Try build interference in a random blk order.
+        # topo = topological_sort(self.cfg)
         instrs = []
         # if isinstance(body, dict):
             # for blk in topo:
                 # pass
-        for blk in topo:
+        # print(self.cfg.vertices())
+        for blk in self.cfg.vertices():
+        # for blk in topo:
             instrs = body[blk] if not (blk in ["conclusion", "main"]) else []
             for i in range(len(instrs)):
                 match instrs[i]:
@@ -248,6 +269,7 @@ class Compiler(compiler.Compiler):
                                     inter_graph.add_edge(v, d)
                             inter_graph.add_vertex(v)
         # v_list = {s for i in instrs for s in live_after[i]}
+        # print(inter_graph)
         return inter_graph
     
     ############################################################################
@@ -364,6 +386,7 @@ class Compiler(compiler.Compiler):
     def allocate_registers(self, p: X86Program,
                            graph: UndirectedAdjList) -> X86Program:
         color = self.color_graph(graph, self.get_variables(graph))
+        print(color)
         body = p.get_body()
         # used callee saved registers
         p.used_callee = set([self.reg_map[s] for s in self.allocated_cee_regs])
