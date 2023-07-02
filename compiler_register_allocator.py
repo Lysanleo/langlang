@@ -23,7 +23,10 @@ class Compiler(compiler.Compiler):
         for ins in instrs:
             match ins:
                 case Jump(label):
-                    labels.append(label)
+                    if label == "conclusion":
+                        pass
+                    else:
+                        labels.append(label)
                 case JumpIf(_, label):
                     labels.append(label)
                 case _:
@@ -129,12 +132,12 @@ class Compiler(compiler.Compiler):
                    la_map:Dict[int,Set[location]],
                    la_for_block:Set[location],     # Capable with dataflow_analysis
                    lb_block:Dict[Label, Set[location]]) -> Set[location]:
-        i = instrs[index]
+        i = instrs[index] if index > -1 else instrs[0]
         res = set()
         instr_num = len(instrs) 
         match i:
             case Jump(label):
-                res = la_for_block
+                res = la_for_block | (set() if label != "conclusion" else set([Reg("rax"), Reg("rsp")]))
             case JumpIf(_, label):
                 next_lb = set()
                 if (index == instr_num - 1):
@@ -148,6 +151,8 @@ class Compiler(compiler.Compiler):
                     res = la_for_block
                 else: # Compute L_before(k+1)
                     res = (la_map[index+1] - self.write_vars(i)) | self.read_vars(i)
+        # if index == -1:
+            # print(res, i)
         return res
     
     cfg = None
@@ -160,8 +165,8 @@ class Compiler(compiler.Compiler):
                 instr_la_map : Dict[Label, Dict[int, Set[location]]] = \
                         dict([(key, {}) for key in instrs.keys()])
                 self.cfg = self.build_CFG(instrs)
-                # TODO Initliaze it
-                live_before_block : Dict[Label, Set[location]] = {}
+                live_before_block : Dict[Label, Set[location]] =\
+                    {k:set() for k in instr_la_map.keys()}
                 # Transfer for dataflow_analysis
                 def transfer(label:Label,
                              liveafter:Set[location]) \
@@ -169,13 +174,16 @@ class Compiler(compiler.Compiler):
                     # Side Effects
                     # - Update live after set for each instrument
                     # - Update live before block set for each block
+                    # if label in ["main", "conclusion"]:
+                        # return set()
+                    inss = instrs[label]
                     inss_len = len(inss)
                     # instr_la_map[label][inss_len-1] = liveafter
-                    inss = instrs[label]
-                    btof = list(range(inss_len)).reverse()
+                    btof = list(range(inss_len))
+                    btof.reverse()
                     for i in btof:
                         instr_la_map[label][i] =\
-                            self.compute_la(instrs[label],
+                            self.compute_la(inss,
                                             i,
                                             instr_la_map[label],
                                             liveafter,
@@ -184,15 +192,19 @@ class Compiler(compiler.Compiler):
                         if i == 0:
                             # Compute live before of index 0 instr infact.
                             live_before_block[label] =\
-                                self.compute_la(instrs[label],
+                                self.compute_la(inss,
                                                 -1,
                                                 instr_la_map[label],
                                                 liveafter,
                                                 live_before_block)
+                    # assert live_before_block != set()
+                    return live_before_block[label]
                 analyze_dataflow(self.cfg, transfer, set(), set.union)
         # print(instr_la_map)
         # for i in range(len(instrs['start'])):
             # print(f"{instrs['start'][i]}                     {instr_la_map['start'][i]}")
+        # print(instr_la_map)
+        print(live_before_block)
         return instr_la_map
 
 
@@ -261,9 +273,9 @@ class Compiler(compiler.Compiler):
 
     # Returns the coloring and the set of spilled variables.
     # TODO: Handle stack allocate
-    def color_graph(self, graph: UndirectedAdjList,
+    def color_graph(self,
+                    graph: UndirectedAdjList,
                     variables: Set[location]) -> Tuple[Dict[location, int], Set[location]]:
-        # BUG : Hard Code reg_map
         reg_map = self.reg_map
         regints:set[int] =set(range(len(reg_map)))
         location_reg_map = {}
