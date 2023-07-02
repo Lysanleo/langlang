@@ -334,6 +334,7 @@ class Compiler:
     def explicate_control(self, p:Module) -> CProgram(Dict[Label, Stmts]):
         match p:
             case Module(body):
+                # TODO This is not right
                 new_body = [Return(Constant(0))]
                 basic_blocks = {}
                 for s in reversed(body):
