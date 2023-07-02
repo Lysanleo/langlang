@@ -6,6 +6,7 @@ from ast import *
 from x86_ast import *
 from typing import Set, Dict, Tuple, List
 from priority_queue import PriorityQueue
+from dataflow_analysis import analyze_dataflow
 
 
 Label = str
@@ -120,8 +121,11 @@ class Compiler(compiler.Compiler):
 
     # L_after(n) = empty when n equals len(instr_list)
     # L_after(k) = L_before(k + 1)
-    def compute_la(self, instrs:List[Instr], index:int,
-                   la_map:Dict[int,Set[location]], lb_block:Dict[str,Set[location]]):
+    def compute_la(self,
+                   instrs:List[Instr],
+                   index:int,
+                   la_map:Dict[int,Set[location]],
+                   lb_block:Dict[str,Set[location]]) -> Set[location]:
         i = instrs[index]
         res = set()
         instr_num = len(instrs) 
@@ -143,16 +147,22 @@ class Compiler(compiler.Compiler):
                     res = (la_map[index+1] - self.write_vars(i)) | self.read_vars(i)
         return res
     
+    
     cfg = None
     # TODO
     # 1. Modify the instr_la_map to Dict[label, Dict[int, Set[location]]]
-    def uncover_live(self, p: X86Program) -> Dict[Label, Dict[int, Set[location]]]:
+    def uncover_live(self,
+                     p: X86Program) -> Dict[Label, Dict[int, Set[location]]]:
         # L_after :: la
         live_before_block : Dict[Label, Set[location]] = {}
         match p:
             case X86Program(instrs) if isinstance(instrs, Dict):
                 instr_la_map : Dict[Label, Dict[int, Set[location]]] = \
                         dict([(key, {}) for key in instrs.keys()])
+                def transfer(label:Label, liveafter:Set[location]):
+                    # Side Effects
+                    # - Update live after set for each instrument
+                    pass
                 self.cfg = self.build_CFG(instrs)
                 rev_topo = topological_sort(transpose(self.cfg))
                 # rev_topo.remove("conclusion")
