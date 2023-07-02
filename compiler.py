@@ -305,7 +305,13 @@ class Compiler:
                            self.create_block(els, basic_blocks),
                            self.create_block(thn, basic_blocks))]
 
-    def explicate_stmt(self, s:stmt, cont:Stmts, basic_blocks:BasicBlocks) -> Stmts:
+    # TODO 处理If, While的嵌套statement问题, 下面的实现没有考虑body中是statement.
+    def explicate_stmt(
+        self,
+        s:stmt,
+        cont:Stmts,
+        basic_blocks:BasicBlocks
+    ) -> Stmts:
         match s:
             case Assign([lhs], rhs):
                 return self.explicate_assign(rhs, lhs, cont, basic_blocks)
@@ -315,8 +321,11 @@ class Compiler:
                 # Similar to IfExp
                 # If(Compare(atm,[cmp],[atm]), [Goto(label)], [Goto(label)])
                 goto_cont = self.create_block(cont, basic_blocks)
-                goto_body = self.create_block(body+goto_cont, basic_blocks)
-                goto_orelse = self.create_block(orelse+goto_cont, basic_blocks)
+
+                new_body = self.iterate_on_stmts(body, goto_cont, basic_blocks)
+                goto_body = self.create_block(new_body, basic_blocks)
+                new_orelse = self.iterate_on_stmts(orelse, goto_cont, basic_blocks)
+                goto_orelse = self.create_block(new_orelse, basic_blocks)
                 new_stmt = self.explicate_pred(test, goto_body, goto_orelse, basic_blocks)
                 return new_stmt
             case While(cond, body, _):
@@ -325,11 +334,25 @@ class Compiler:
 
                 goto_cont = self.create_block(cont, basic_blocks)
                 # Add goto while_label in the end of the body instructions block
-                goto_body = self.create_block(body+goto_while, basic_blocks)
+                new_body = self.iterate_on_stmts(body, goto_while, basic_blocks)
+                goto_body = self.create_block(new_body, basic_blocks)
                 # bind while_label with actual corresponding Cif statements
                 basic_blocks[goto_while[0].label] = self.explicate_pred(cond,goto_body,goto_cont,basic_blocks)
                 # return goto while_label
                 return goto_while
+    
+    def iterate_on_stmts(
+        self,
+        stmts:Stmts,
+        cont:Stmts = [],
+        basic_blocks: BasicBlocks = {}
+    ) -> Stmts:
+        new_seq = [] + cont
+        for s in reversed(stmts):
+            new_seq = self.explicate_stmt(s, new_seq, basic_blocks)
+        return new_seq
+        
+
 
     def explicate_control(self, p:Module) -> CProgram(Dict[Label, Stmts]):
         match p:
