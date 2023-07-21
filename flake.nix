@@ -37,8 +37,16 @@
               (python.withPackages (ps: with ps; [
                 virtualenv # Virtualenv
                 pip # The pip installer
+                python
+                jupyter
                 ipykernel
                 pytest
+                sympy
+                pandas
+                graphviz
+                networkx
+                matplotlib
+                openpyxl
               ]))
             ];
           };
