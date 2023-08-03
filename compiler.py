@@ -75,8 +75,61 @@ class Compiler:
     # Expose Allocation
     ############################################################################
 
-    def expose_allocation(self, p: Module) -> Module:
-        pass
+    def handle_ltup_expr(e:expr) -> expr:
+        match e:
+            # Trans to the L_alloc
+            case Tuple(exprs, Load()):
+                # notice that in the eoc alloc has a smaller index than inits
+                alloc_name = Name(generate_name("alloc"))
+                # inits
+                # inits = [(Name(generate_name("init")), exp) for exp in exprs]
+                inits = {i:Name(generate_name("init")) for i,_ in enumerate(exprs)}
+                # calculate bytes
+                bytes = 8 + 8 * len(exprs)
+                # condictional allocate call
+                cond = Compare(BinOp(GlobalValue("free_ptr"),Add(),Constant(bytes))
+                              ,[Lt()]
+                              ,GlobalValue("fromspace_end"))
+                body = [Constant(0)]
+                orelse = [Collect(bytes)]
+                conditional_call = If(cond, body, orelse)
+                # allocate assign
+                alloc_assign = Assign([alloc_name], Allocate(len(exprs), e.has_type))
+                # assign pairs
+                subscript_assign_pairs = [(Subscript(alloc_name, Constant(i), Store()), init_name) for i,init_name in inits.items()]
+                inits_assign_pairs = [(init_name, exprs[i]) for i,init_name in inits.items()]
+                # assign statements
+                sub_assigns = make_assigns(subscript_assign_pairs)
+                init_assigns = make_assigns(inits_assign_pairs)
+                # append allocation statements
+                cont_stmts:List = init_assigns \
+                                + conditional_call \
+                                + alloc_assign \
+                                + sub_assigns
+                # Completed allocation expression
+                new_expr = Begin(cont_stmts, alloc_name)
+            case Subscript(exp,Constant(int),Load()):
+                pass
+            case Call(Name('len'), [exp2]):
+                pass
+        return pass
+    
+    def handle_ltup_stmt(s:stmt) -> stmt:
+        match s:
+            case Expr(exp):
+                pass
+            case While(exp, stmts, []):
+                pass
+            case If(exp, stmts, []):
+                pass
+        return pass
+
+    # L_tup -> L_Alloc
+    def expose_allocation(self, p:Module) -> Module:
+        match p:
+            case Module(body):
+                new_body = [self.handle_ltup_stmt(s) for s in body]
+        return Module(new_body)
 
     ############################################################################
     # Remove Complex Operands
@@ -263,8 +316,7 @@ class Compiler:
             case _:
                 # No side-effects, discard it
                 return cont
-                
-    
+ 
     def explicate_assign(self, rhs, lhs, cont, basic_blocks) -> Stmts:
         match rhs:
             case IfExp(test, body, orelse):
@@ -358,8 +410,6 @@ class Compiler:
         for s in reversed(stmts):
             new_seq = self.explicate_stmt(s, new_seq, basic_blocks)
         return new_seq
-        
-
 
     def explicate_control(self, p:Module) -> CProgram(Dict[Label, Stmts]):
         match p:
@@ -520,6 +570,7 @@ class Compiler:
     def select_stmt(self, s: stmt) -> List[instr]:
         # Patch, don't know if dangerous
         select_instr = self.select_instr
+        instrs = list()
         match s:
             # Match call function
             case Expr(Call(Name(funcname), [args]) as expr):
@@ -707,13 +758,11 @@ class Compiler:
                     temp1.append(Instr('pushq', [r]))
                     temp2.append(Instr('popq', [r]))
                 temp2.reverse
-
                 # Prelude Main
                 body['main'] = [Instr('pushq', [Reg('rbp')])
                                , Instr('movq', [Reg('rsp'), Reg('rbp')])] \
                                + temp1 \
                                + [Instr('subq', [Immediate(p.stack_space), Reg('rsp')]), Jump("start")]
-
                 # Conclusion
                 body["conclusion"] =[Instr('addq', [Immediate(p.stack_space), Reg('rsp')])] \
                                     + temp2 \
