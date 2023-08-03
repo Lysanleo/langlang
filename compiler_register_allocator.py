@@ -216,7 +216,6 @@ class Compiler(compiler.Compiler):
         # print(instr_la_map["block.7"])
         return instr_la_map
 
-
     ############################################################################
     # Build Interference
     ############################################################################
@@ -224,7 +223,8 @@ class Compiler(compiler.Compiler):
     def build_interference(self,
                            p: X86Program,
                            live_after: Dict[Label, 
-                                            Dict[int, Set[location]]]
+                                            Dict[int,
+                                                 Set[location]]]
                           ) -> UndirectedAdjList:
         inter_graph = UndirectedAdjList()
         body = p.get_body()
