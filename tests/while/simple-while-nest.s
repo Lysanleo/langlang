@@ -54,16 +54,16 @@ start:
 main:
     pushq %rbp
     movq %rsp, %rbp
-    pushq %r12
     pushq %r13
+    pushq %r12
     subq $0, %rsp
     jmp start
 
 	.align 16
 conclusion:
     addq $0, %rsp
-    popq %r12
     popq %r13
+    popq %r12
     popq %rbp
     retq
 

@@ -23,8 +23,8 @@ class CompilerLtup(compiler.Compiler):
                 # condictional allocate call
                 cond = Compare(BinOp(GlobalValue("free_ptr"),Add(),Constant(bytes))
                               ,[Lt()]
-                              ,GlobalValue("fromspace_end"))
-                body = [Constant(0)]
+                              ,[GlobalValue("fromspace_end")])
+                body = []
                 orelse = [Collect(bytes)]
                 conditional_call = If(cond, body, orelse)
                 # allocate assign
@@ -36,9 +36,9 @@ class CompilerLtup(compiler.Compiler):
                 sub_assigns = make_assigns(subscript_assign_pairs)
                 init_assigns = make_assigns(inits_assign_pairs)
                 # append allocation statements
-                cont_stmts:List = init_assigns \
-                                + conditional_call \
-                                + alloc_assign \
+                cont_stmts:list = init_assigns \
+                                + [conditional_call] \
+                                + [alloc_assign] \
                                 + sub_assigns
                 # Completed allocation expression
                 new_expr = Begin(cont_stmts, alloc_name)
