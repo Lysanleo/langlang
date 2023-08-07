@@ -1,19 +1,23 @@
 import os
 import compiler
 import compiler_register_allocator
+import compiler_ltup
 import interp_Lvar
 import interp_Lif
 import interp_Lwhile
+import interp_Ltup
 import interp_Cif
 import type_check_Lvar
 import type_check_Lif
 import type_check_Lwhile
+import type_check_Ltup
 import type_check_Cif
 from utils import enable_tracing, run_tests, run_one_test
 from interp_x86.eval_x86 import interp_x86
 
 compiler = compiler.Compiler()
 compiler_register = compiler_register_allocator.Compiler()
+compiler_ltup = compiler_ltup.CompilerLtup()
 
 # Test Options for Lvar
 
@@ -78,6 +82,20 @@ interp_while_dict = {
     'patch_instructions': interp_x86,
 }
 
+# Test options for Ltup
+
+typecheckLtup = type_check_Ltup.TypeCheckLtup().type_check
+interpLtup = interp_Ltup.InterpLtup().interp
+
+typecheck_tuple_dict = {
+    'source': typecheckLtup,
+    'expose_allocation': typecheckLtup
+}
+
+interp_tuple_dict = {
+    'expose_allocation': interpLtup,
+}
+
 if False:
     run_one_test(os.getcwd() + '/tests/var/zero.py',
                  'var',
@@ -96,4 +114,7 @@ else:
     run_tests('while', compiler_register, 'while',
               typecheck_while_dict,
               interp_while_dict)
+    run_tests('tuple', compiler_ltup, 'tuple',
+              typecheck_tuple_dict,
+              interp_tuple_dict)
 
