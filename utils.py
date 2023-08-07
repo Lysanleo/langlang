@@ -629,7 +629,7 @@ class Type:
 def make_assigns(bs):
     return [Assign([x], rhs) for (x, rhs) in bs]
 
-def make_begin(bs:List[Tuple[Name, expr]], e:expr):
+def make_begin(bs:list[tuple[Name, expr]], e:expr):
     if len(bs) > 0:
         return Begin([Assign([x], rhs) for (x, rhs) in bs], e)
     else:

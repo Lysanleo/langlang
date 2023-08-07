@@ -5,10 +5,10 @@ from x86_ast import *
 import x86_ast
 # from interp_x86.x86exp import Retq
 import os
-from typing import List, Tuple, Set, Dict
+from typing import List, Set, Dict
 import math
 
-Binding = Tuple[Name, expr]
+Binding = tuple[Name, expr]
 Temporaries = List[Binding]
 
 Label = str
@@ -30,8 +30,8 @@ class Compiler:
                     case Or():
                         new_expr = IfExp(e1, Constant(True), e2)
                 return new_expr
-            case IfExp(test, e2, e3):
-                new_test = self.shrink_expr(test)
+            case IfExp(cond_exp, e2, e3):
+                new_test = self.shrink_expr(cond_exp)
                 new_e2 = self.shrink_expr(e2)
                 new_e3 = self.shrink_expr(e3)
                 return IfExp(new_test, new_e2, new_e3)
@@ -75,7 +75,7 @@ class Compiler:
     # Expose Allocation
     ############################################################################
 
-    def handle_ltup_expr(e:expr) -> expr:
+    def handle_ltup_expr(self, e:expr) -> expr:
         match e:
             # Trans to the L_alloc
             case Tuple(exprs, Load()):
@@ -108,21 +108,55 @@ class Compiler:
                                 + sub_assigns
                 # Completed allocation expression
                 new_expr = Begin(cont_stmts, alloc_name)
-            case Subscript(exp,Constant(int),Load()):
-                pass
-            case Call(Name('len'), [exp2]):
-                pass
-        return pass
+            case BinOp(lhs_exp, op, rhs_exp):
+                new_lhs_exp = self.handle_ltup_expr(lhs_exp)
+                new_rhs_exp = self.handle_ltup_expr(rhs_exp)
+                new_expr = BinOp(new_lhs_exp, op, new_rhs_exp)
+            case UnaryOp(op, rhs_exp):
+                new_rhs_exp = self.handle_ltup_expr(rhs_exp)
+                new_expr = UnaryOp(op, new_rhs_exp)
+            case BoolOp(boolop, [exp1, exp2]):
+                new_exp1 = self.handle_ltup_expr(exp1)
+                new_exp2 = self.handle_ltup_expr(exp2)
+                new_expr = BoolOp(boolop, [new_exp1, new_exp2])
+            case IfExp(cond_exp, then_exp, orelse_exp):
+                new_cond_exp = self.handle_ltup_expr(cond_exp)
+                new_then_exp = self.handle_ltup_expr(then_exp)
+                new_orelse_exp = self.handle_ltup_expr(orelse_exp)
+                new_expr = IfExp(new_cond_exp, new_then_exp, new_orelse_exp)
+            case Compare(lhs_exp, [cmp], [rhs_exp]):
+                new_lhs_exp = self.handle_ltup_expr(lhs_exp)
+                new_rhs_exp = self.handle_ltup_expr(rhs_exp)
+                new_expr = Compare(new_lhs_exp, [cmp], [new_rhs_exp])
+            case Subscript(exp, Constant(index), Load()):
+                new_exp = self.handle_ltup_expr(exp)
+                new_expr = Subscript(new_exp, Constant(index), Load())
+            case Call(Name('len'), [exp]):
+                new_exp = self.handle_ltup_expr(exp)
+                new_expr = Call(Name('len'), [new_exp])
+            case _:
+                new_expr = e
+        return new_expr
     
-    def handle_ltup_stmt(s:stmt) -> stmt:
+    def handle_ltup_stmt(self, s:stmt) -> stmt:
         match s:
             case Expr(exp):
-                pass
-            case While(exp, stmts, []):
-                pass
-            case If(exp, stmts, []):
-                pass
-        return pass
+                new_stmt = Expr(self.handle_ltup_expr(exp))
+            case While(cond_exp, bodystmts, []):
+                new_cond_exp = self.handle_ltup_expr(cond_exp)
+                new_bodystmts = [self.handle_ltup_stmt(stm) for stm in bodystmts]
+                new_stmt = While(new_cond_exp, new_bodystmts, [])
+            case If(cond_exp, then_stmts, orelse_stmts):
+                new_cond_exp = self.handle_ltup_expr(cond_exp)
+                new_then_stmts = [self.handle_ltup_stmt(stm) for stm in then_stmts]
+                new_orelse_stmts = [self.handle_ltup_stmt(stm) for stm in orelse_stmts]
+                new_stmt = If(new_cond_exp, new_then_stmts, new_orelse_stmts)
+            case Assign([lhs_var_exp], rhs_exp):
+                new_rhs_exp = self.handle_ltup_expr(rhs_exp)
+                new_stmt = Assign([lhs_var_exp], new_rhs_exp)
+            case _:
+                new_stmt = s
+        return new_stmt
 
     # L_tup -> L_Alloc
     def expose_allocation(self, p:Module) -> Module:
@@ -135,15 +169,15 @@ class Compiler:
     # Remove Complex Operands
     ############################################################################
 
-    def rco_flat(self, rcolist: Tuple[expr, Temporaries]) -> List[stmt]:
+    def rco_flat(self, rcolist: tuple[expr, Temporaries]) -> List[stmt]:
         stmts = [Assign([atmtp[0]], atmtp[1]) for atmtp in rcolist[1]]
         # print(stmts)
         return stmts
 
-    def rco_atom(self, e:expr) -> Tuple[expr, Temporaries]:
+    def rco_atom(self, e:expr) -> tuple[expr, Temporaries]:
         pass
 
-    def rco_exp(self, e: expr, need_atomic: bool) -> Tuple[expr, Temporaries]:
+    def rco_exp(self, e: expr, need_atomic: bool) -> tuple[expr, Temporaries]:
         new_sym = ""
         match e:
             case Constant(value):
