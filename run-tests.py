@@ -96,11 +96,13 @@ interpLtup = interp_Ltup.InterpLtup().interp
 
 typecheck_tuple_dict = {
     'source': typecheckLtup,
-    'expose_allocation': typecheckLtup
+    'expose_allocation': typecheckLtup,
+    'remove_complex_operands': typecheckLtup,
 }
 
 interp_tuple_dict = {
     'expose_allocation': interpLtup,
+    'remove_complex_operands': interpLtup,
 }
 
 if False:
@@ -118,9 +120,9 @@ else:
     # run_tests('var', compiler_register, 'var',
             #   typecheck_dict,
             #   interp_dict)
-    run_tests('while', compiler_register, 'while',
-              typecheck_while_dict,
-              interp_while_dict)
+    # run_tests('while', compiler_register, 'while',
+            #   typecheck_while_dict,
+            #   interp_while_dict)
     run_tests('tuple', compiler_ltup, 'tuple',
               typecheck_tuple_dict,
               interp_tuple_dict)

@@ -14,7 +14,7 @@ def handle_exp(e:exp) -> exp:
             pass
         case Tuple(exprs, Load()):
             pass
-        case Subscript(exp, Constant(index), Load()):
+        case Subscript(exp, index_expr, ctx):
             pass
         case Call(Name('len'), [exp]):
             pass
