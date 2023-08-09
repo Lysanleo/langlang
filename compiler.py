@@ -6,13 +6,7 @@ import x86_ast
 import os
 from typing import List, Set, Dict
 import math
-
-Binding = tuple[Name, expr]
-Temporaries = List[Binding]
-
-Label = str
-Stmts = List[stmt]
-BasicBlocks = Dict[Label,Stmts]
+from data_type import *
 
 class Compiler:
     ############################################################################
