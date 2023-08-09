@@ -105,12 +105,13 @@ class CompilerLtup(compiler.Compiler):
     # Remove Complex Operands
     ############################################################################
 
+
     def rco_flat(self, rcolist: tuple[expr, Temporaries]) -> List[stmt]:
         stmts = [Assign([atmtp[0]], atmtp[1]) for atmtp in rcolist[1]]
         # print(stmts)
         return stmts
 
-    def rco_atom(self, e:expr) -> tuple[expr, Temporaries]:
+    def rco_atom(self,e:expr) -> tuple[expr, Temporaries]:
         pass
 
     def rco_exp(self, e: expr, need_atomic: bool) -> tuple[expr, Temporaries]:
@@ -121,6 +122,9 @@ class CompilerLtup(compiler.Compiler):
             case Name(id):
                 # return (e, [(e, e)])
                 return (e, [])
+            case Begin(body_stmts, ret_expr):
+                pass
+                
             case BinOp(latm, Add(), ratm):
                 atm1 = self.rco_exp(latm, True)
                 atm2 = self.rco_exp(ratm, True)
