@@ -68,6 +68,15 @@ class Compiler:
     # Remove Complex Operands
     ############################################################################
 
+    def build_atomic_pair(self,
+                          atomic_p:bool,
+                          e:expr,
+                          bindings:Temporaries) -> tuple[expr, Temporaries]:
+        if atomic_p:
+            new_sym = generate_name("tmp")
+            return (Name(new_sym), bindings + [(Name(new_sym), e)])
+        return (e, bindings)
+
     def rco_flat(self, rcolist: tuple[expr, Temporaries]) -> List[stmt]:
         stmts = [Assign([atmtp[0]], atmtp[1]) for atmtp in rcolist[1]]
         # print(stmts)
@@ -80,10 +89,12 @@ class Compiler:
         new_sym = ""
         match e:
             case Constant(value):
-                return (e, [])
+                new_expr = e
+                new_bindings = []
             case Name(id):
                 # return (e, [(e, e)])
-                return (e, [])
+                new_expr = e
+                new_bindings = []
             case BinOp(latm, Add(), ratm):
                 atm1 = self.rco_exp(latm, True)
                 atm2 = self.rco_exp(ratm, True)
@@ -91,41 +102,22 @@ class Compiler:
                 new_bindings = atm1[1] + atm2[1]
                 # print("In BinOp Case:")
                 # print(new_bindings)
-                if need_atomic:
-                    new_sym = generate_name("tmp")
-                    return (Name(new_sym), new_bindings + [(Name(new_sym), new_expr)])
-                return (new_expr, new_bindings)
             case BinOp(latm, Sub(), ratm):
                 atm1 = self.rco_exp(latm, True)
                 atm2 = self.rco_exp(ratm, True)
                 new_expr = BinOp(atm1[0], Sub(), atm2[0])
                 new_bindings = atm1[1] + atm2[1]
-                if need_atomic:
-                    new_sym = generate_name("tmp")
-                    return (Name(new_sym), new_bindings + [(Name(new_sym), new_expr)])
-                return (new_expr, new_bindings)
             case UnaryOp(USub(), atm):
                 atm1 = self.rco_exp(atm, True)
                 new_expr = UnaryOp(USub(), atm1[0])
                 new_bindings = atm1[1]
-                if need_atomic:
-                    new_sym = generate_name("tmp")
-                    return (Name(new_sym), new_bindings + [(Name(new_sym), new_expr)])
-                return (new_expr, new_bindings)
             case UnaryOp(Not(), atm):
                 atm1 = self.rco_exp(atm, True)
                 new_expr = UnaryOp(Not(), atm1[0])
                 new_bindings = atm1[1]
-                if need_atomic:
-                    new_sym = generate_name("tmp")
-                    return (Name(new_sym), new_bindings + [(Name(new_sym), new_expr)])
-                return (new_expr, new_bindings)
             case Call(Name('input_int'), []):
                 new_expr = e
-                if need_atomic:
-                    new_sym = generate_name("tmp")
-                    return (Name(new_sym), [(Name(new_sym), new_expr)])
-                return (e, [])
+                new_bindings = []
             case Compare(latm, [cmp], [ratm]) as c:
                 print(ratm)
                 atm1 = self.rco_exp(latm, True)
@@ -133,10 +125,6 @@ class Compiler:
                 new_expr = Compare(atm1[0], [cmp], [atm2[0]])
                 new_bindings = atm1[1] + atm2[1]
                 print(new_bindings)
-                if need_atomic:
-                    new_sym = generate_name("tmp")
-                    return (Name(new_sym), new_bindings + [(Name(new_sym), new_expr)])
-                return (new_expr, new_bindings)
             case IfExp(e1, e2, e3):
                 atm1 = self.rco_exp(e1, False)
                 ss1 = self.rco_stmt(Expr(e2))
@@ -145,11 +133,7 @@ class Compiler:
                 new_expr = IfExp(atm1[0], Begin(ss1[0:len(ss1)-1], ss1[len(ss1)-1].value),
                                           Begin(ss2[0:len(ss1)-1], ss2[len(ss2)-1].value))
                 new_bindings = atm1[1]
-                if need_atomic:
-                    new_sym = generate_name("tmp")
-                    new_bindings = new_bindings + [(Name(new_sym), new_expr)]
-                    return (Name(new_sym), new_bindings)
-                return (new_expr, new_bindings)
+        return self.build_atomic_pair(need_atomic, new_expr, new_bindings)
 
     def rco_stmt(self, s: stmt) -> List[stmt]:
         match s:
