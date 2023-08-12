@@ -106,15 +106,6 @@ class CompilerLtup(compiler.Compiler):
     # Remove Complex Operands
     ############################################################################
 
-
-    def rco_flat(self, rcolist: tuple[expr, Temporaries]) -> list[stmt]:
-        stmts = [Assign([atmtp[0]], atmtp[1]) for atmtp in rcolist[1]]
-        # print(stmts)
-        return stmts
-
-    def rco_atom(self,e:expr) -> tuple[expr, Temporaries]:
-        pass
-
     def rco_exp(self, e: expr, need_atomic: bool) -> tuple[expr, Temporaries]:
         match e:
             case GlobalValue(name):
@@ -168,3 +159,24 @@ class CompilerLtup(compiler.Compiler):
                     new_body = new_body + stmts
                 print(new_body)
         return Module(new_body)
+
+    ############################################################################
+    # Explicate Control
+    ############################################################################
+
+    def explicate_stmt(
+        self,
+        s:stmt,
+        cont:Stmts,
+        basic_blocks:BasicBlocks
+    ) -> Stmts:
+        match s:
+            case Collect(size):
+                return [s] + (cont if cont else [])
+            case _:
+                return super().explicate_stmt(s, cont, basic_blocks)
+
+    def explicate_control(self, p:Module) -> CProgram(Dict[Label, Stmts]):
+        match p:
+            case Module(body):
+                return super().explicate_control(p)

@@ -68,10 +68,12 @@ class Compiler:
     # Remove Complex Operands
     ############################################################################
 
-    def build_atomic_pair(self,
-                          atomic_p:bool,
-                          exp:expr,
-                          bindings:Temporaries) -> tuple[expr, Temporaries]:
+    def build_atomic_pair(
+        self,
+        atomic_p:bool,
+        exp:expr,
+        bindings:Temporaries
+    ) -> tuple[expr, Temporaries]:
         if atomic_p:
             new_sym = generate_name("tmp")
             return (Name(new_sym), bindings + [(Name(new_sym), exp)])
@@ -197,7 +199,11 @@ class Compiler:
     # Explicate Control
     ############################################################################
 
-    def create_block(self, stmts:List[stmt], basic_blocks:Dict[str,List[stmt]]) -> List[stmt]:
+    def create_block(
+        self,
+        stmts:List[stmt],
+        basic_blocks:Dict[str,List[stmt]]
+    ) -> List[stmt]:
         match stmts:
             case [Goto(l)]:
                 return stmts
@@ -206,7 +212,12 @@ class Compiler:
                 basic_blocks[label] = stmts
                 return [Goto(label)]
 
-    def explicate_effect(self, e:expr, cont:Stmts, basic_blocks:Dict[str,List[stmt]]) -> Stmts:
+    def explicate_effect(
+        self,
+        e:expr, 
+        cont:Stmts,
+        basic_blocks:Dict[str,List[stmt]]
+    ) -> Stmts:
         match e:
             case IfExp(test, body, orelse):
                 cont = self.create_block(cont, basic_blocks)
@@ -225,34 +236,48 @@ class Compiler:
                 # No side-effects, discard it
                 return cont
  
-    def explicate_assign(self, rhs, lhs, cont, basic_blocks) -> Stmts:
+    def explicate_assign(
+        self,
+        lhs,
+        rhs,
+        cont: Stmts,
+        basic_blocks: BasicBlocks
+    ) -> Stmts:
         match rhs:
             case IfExp(test, body, orelse):
                 # Pack the stmt should be excuted after this assign as a block(?)
                 # print(lhs, rhs)
                 cont = self.create_block(cont, basic_blocks)
-                new_body = self.explicate_assign(body, lhs, cont, basic_blocks)
-                new_orelse = self.explicate_assign(orelse, lhs, cont, basic_blocks)
+                new_body = self.explicate_assign(lhs, body, cont, basic_blocks)
+                new_orelse = self.explicate_assign(lhs, orelse, cont, basic_blocks)
                 goto_thn = self.create_block(new_body, basic_blocks)
                 goto_els = self.create_block(new_orelse, basic_blocks)
                 new_cond = self.explicate_pred(test, goto_thn, goto_els, basic_blocks)
                 # Clear cont by the way.
                 return new_cond
             case Begin(body, result):
-                return [Assign([lhs], result)] + (cont if cont else [])
+                cont_stmts = [Assign([lhs], result)] + (cont if cont else [])
+                goto_cont = self.iterate_on_stmts(body, cont_stmts, basic_blocks)
+                return goto_cont             
             case _:
                 if (cont == None):
                     print(lhs, rhs)
                 return [Assign([lhs], rhs)] + (cont if cont else [])
 
-    def explicate_pred(self, cnd:expr, thn, els, basic_blocks) -> Stmts:
+    def explicate_pred(
+        self,
+        cnd:expr, 
+        thn,
+        els,
+        basic_blocks
+    ) -> Stmts:
         match cnd:
             case Compare(left, [op], [right]):
                 return [If(cnd, thn, els)] 
             case Constant(True):
-                return thn; 
+                return thn
             case Constant(False):
-                return els; 
+                return els 
             case UnaryOp(Not(), operand):
                 return [If(operand, els, thn)]
             case IfExp(test, body, orelse):
@@ -281,7 +306,7 @@ class Compiler:
     ) -> Stmts:
         match s:
             case Assign([lhs], rhs):
-                return self.explicate_assign(rhs, lhs, cont, basic_blocks)
+                return self.explicate_assign(lhs, rhs, cont, basic_blocks)
             case Expr(value):
                 return self.explicate_effect(value, cont, basic_blocks)
             case If(test, body, orelse):
@@ -314,7 +339,7 @@ class Compiler:
         cont:Stmts = [],
         basic_blocks: BasicBlocks = {}
     ) -> Stmts:
-        new_seq = [] + cont
+        new_seq = cont
         for s in reversed(stmts):
             new_seq = self.explicate_stmt(s, new_seq, basic_blocks)
         return new_seq
@@ -325,8 +350,7 @@ class Compiler:
                 # TODO This is not right
                 new_body = [Return(Constant(0))]
                 basic_blocks = {}
-                for s in reversed(body):
-                    new_body = self.explicate_stmt(s, new_body, basic_blocks)
+                new_body = self.iterate_on_stmts(body, new_body, basic_blocks)
                 basic_blocks[label_name('start')] = new_body
                 # print(basic_blocks)
                 return CProgram(basic_blocks)
@@ -373,6 +397,7 @@ class Compiler:
                 instrs.append(Callq('read_int', 0))
                 return instrs
 
+    # TODO Wut's the Variable Here?
     def assign_helper(self, target:str, e: expr, Variable) -> List[instr]:
         # Patch, don't know if dangerous
         select_arg = self.select_arg
