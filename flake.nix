@@ -47,6 +47,7 @@
                 networkx
                 matplotlib
                 openpyxl
+                python-lsp-server
               ]))
             ];
           };

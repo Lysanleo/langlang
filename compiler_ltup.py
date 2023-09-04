@@ -1,3 +1,5 @@
+import re
+from types import GenericAlias
 import compiler
 from ast import *
 from utils import *
@@ -120,13 +122,13 @@ class CompilerLtup(compiler.Compiler):
                         new_body_stmts = new_body_stmts + stmts
                 new_expr = Begin(new_body_stmts, ret_expr)
                 new_bindings = []
-            case Subscript(exp, index_expr, Load()):
+            case Subscript(exp, idx_expr, Load()):
                 new_exp_rcotp = self.rco_exp(exp, True)
                 # new_index_expr_rcotp = self.rco_exp(index_expr, True)
-                new_expr = Subscript(new_exp_rcotp[0], index_expr, Load())
+                new_expr = Subscript(new_exp_rcotp[0], idx_expr, Load())
                 new_bindings = new_exp_rcotp[1]
             case Allocate(length, typ):
-                new_expr = Allocate(length, typ)
+                new_expr = e
                 new_bindings = []
             case Call(Name('len'), [exp]):
                 new_exp_rcotp = self.rco_exp(exp, True)
@@ -180,3 +182,89 @@ class CompilerLtup(compiler.Compiler):
         match p:
             case Module(body):
                 return super().explicate_control(p)
+
+    ############################################################################
+    # Select Instructions
+    ############################################################################
+
+    def compute_tuple_tag(self, tup_type:TupleType) -> int:
+        # type_args = tup_type.__args__
+        # type_str = map(lambda x: str(x), type_args)
+        length = len(tup_type.types)
+        # prog = re.compile(r"^tuple\[")
+        # pt_list = zip(map(lambda x: prog.match(x)!=None, type_str),range(0,length))
+        pt_list = zip(map(lambda x: isinstance(x, TupleType), tup_type.types),range(0,length))
+        pt_mask = sum(map(lambda pr: 1<<(pr[1]+7) if pr[0] else 0, pt_list))
+        return pt_mask + (length << 1) + 1
+
+    def assign_helper(
+        self, 
+        target: list | str, 
+        # idx: int,
+        rhs: expr,
+        Variable,
+        # lhs_tuple_p: bool
+    ) -> List[instr]:
+        instrs = list()
+        match target:
+            case [Subscript(Name(var), Constant(i), Store())]:
+                instrs.append(Instr('movq', [Variable(var+"'"), Reg('r11')]))
+                instrs.append(Instr('movq', [self.select_arg(rhs), Deref('r11', 8*(i+1))]))
+            # case [Name(var)] if isinstance(rhs, Subscript):
+            case [Name(var)]:
+                match rhs:
+                    case Subscript(Name(rhs_tuple), Constant(i), _):
+                        instrs.append(Instr('movq', [Variable(rhs_tuple+"'"), Reg('r11')]))
+                        instrs.append(Instr('movq', [Deref('r11', 8*(i+1)), Variable(var+"'")]))
+                    # RHS is allocate
+                    case Allocate(bytes, tup_type):
+                        # print(tup_type)
+                        # print(isinstance(tup_type, GenericAlias))
+                        # print(tup_type.types)
+                        instrs.append(Instr('movq', [Global('free_ptr'), Reg('r11')]))
+                        instrs.append(Instr('addq', [Immediate(8*(bytes+1)), Global('free_ptr')]))
+                        instrs.append(Instr('movq', [Immediate(self.compute_tuple_tag(tup_type)), Deref('r11', 0)]))
+                        instrs.append(Instr('movq', [Reg('r11'), Variable(var+"'")]))
+                    case Compare(operand1, [Is() as cmp], operand2):
+                        cc = self.cmp_helper(cmp)
+                        instrs = [Instr("cmpq", [operand2, operand1])]
+                        instrs.append(Instr("set"+cc, [ByteReg('al')]))
+                        instrs.append(Instr("movzbq", [ByteReg('al'), Variable(var)]))
+                        return instrs
+                    case GlobalValue(gv):
+                        instrs.append(Instr('movq', [Global('free_ptr'), Variable(var)]))
+                    case _:
+                        instrs = super().assign_helper(var, rhs, Variable)
+            case _:
+                # print(target, rhs)
+                instrs = super().assign_helper(target, rhs, Variable)
+        return instrs
+
+    # def select_instr(self, e: expr) -> List[instr]:
+        # match
+        # return super().select_instr(e)
+
+    def select_stmt(self, s:stmt) -> List[instr]:
+        instrs = list()
+        # print(s)
+        match s:
+            # Tuple write form
+            case Assign([Subscript(Name(var), Constant(i), Store())] as lhs, expr):
+                # instrs = self.assign_helper(var, i, expr, Variable, True)
+                instrs = self.assign_helper(lhs, expr, Variable)
+            case Assign([Name(var)] as lhs, expr):
+                instrs = self.assign_helper(lhs, expr, Variable)
+            case Expr(Collect(bytes)):
+                instrs.append(Instr('movq', [Reg('r15'), Reg('rdi')]))
+                instrs.append(Instr('movq', [Immediate(bytes), Reg('rsi')]))
+                instrs.append(Callq('collect', 1))
+            case Collect(byte_size):
+                instrs.append(Instr('movq', [Reg('r15'), Reg('rdi')]))
+                instrs.append(Instr('movq', [Immediate(byte_size), Reg('rsi')]))
+                instrs.append(Callq("collect", 1))
+            case _:
+                instrs = super().select_stmt(s)
+        return instrs
+    
+    def select_instructions(self, p: Module | CProgram) -> X86Program:
+        return super().select_instructions(p)
