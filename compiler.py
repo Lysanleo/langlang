@@ -364,45 +364,25 @@ class Compiler:
            , 'r8', 'r9', 'r10', 'r11'
            , 'r12', 'r13', 'r14', 'r15']
 
-    def select_arg(self, e: expr) -> arg:
-        match e:
-            case Constant(x) if isinstance(x, bool):
-                return Immediate(1 if x else 0)
-            case Constant(x) if isinstance(x, int):
-                return Immediate(x)
-            case Reg(_):
-                return e
-            case Name(var):
-                return Variable(var)
     def cmp_helper(self, cmp) -> str:
+        cc = str()
         match cmp:
             case Eq():    cc = "e"
+            case Is():    cc = "e"
             case NotEq(): cc = "ne"
             case Lt():    cc = "l"
             case LtE():   cc = "le"
             case Gt():    cc = "g"
             case GtE():   cc = "ge"
+            case _:
+                raise ValueError("Invalid compare operator")
         return cc
 
-    def select_instr(self, e: expr) -> List[instr]:
+    def assign_helper(self, target:str, rhs: expr, Variable) -> List[instr]:
         # Patch, don't know if dangerous
         select_arg = self.select_arg
         instrs:List[instr] = []
-        match e:
-            case Call(Name('print'), [atm]):
-                instrs.append(Instr('movq', [select_arg(atm), select_arg(Reg('rdi'))]))
-                instrs.append(Callq('print_int', 1))
-                return instrs
-            case Call(Name('input_int'), []):
-                instrs.append(Callq('read_int', 0))
-                return instrs
-
-    # TODO Wut's the Variable Here?
-    def assign_helper(self, target:str, e: expr, Variable) -> List[instr]:
-        # Patch, don't know if dangerous
-        select_arg = self.select_arg
-        instrs:List[instr] = []
-        match e:
+        match rhs:
             # Add-Op
             # var = atm + var
             case ( BinOp(Name(x) as var1, Add(), Constant(y) as atm1)
@@ -495,30 +475,49 @@ class Compiler:
                 instrs = instrs + [Instr('movq', [select_arg(atm1), Variable(target)])]
                 return instrs
             case Call(Name('input_int'), []):
-                instrs = self.select_instr(e)
+                instrs = self.select_instr(rhs)
                 instrs = instrs + [Instr('movq', [select_arg(Reg('rax'))
                                                  , Variable(target)])]
                 return instrs
 
+    def select_arg(self, e: expr) -> arg:
+        match e:
+            case Constant(x) if isinstance(x, bool):
+                return Immediate(1 if x else 0)
+            case Constant(x) if isinstance(x, int):
+                return Immediate(x)
+            # TODO Don't need this pattern(?)
+            # For select_arg work on the L_lang, and its AST has no Reg node
+            case Reg(_):
+                return e
+            case Name(var):
+                return Variable(var)
+
+    def select_instr(self, e: expr) -> List[instr]:
+        # Patch, don't know if dangerous
+        select_arg = self.select_arg
+        instrs:List[instr] = []
+        match e:
+            case Call(Name('print'), [atm]):
+                instrs.append(Instr('movq', [select_arg(atm), select_arg(Reg('rdi'))]))
+                instrs.append(Callq('print_int', 1))
+                return instrs
+            case Call(Name('input_int'), []):
+                instrs.append(Callq('read_int', 0))
+                return instrs
+
     def select_stmt(self, s: stmt) -> List[instr]:
         # Patch, don't know if dangerous
-        select_instr = self.select_instr
         instrs = list()
         match s:
-            # Match call function
+            # Match all function call
             case Expr(Call(Name(funcname), [args]) as expr):
-                instrs = select_instr(expr)
-                # print(stmt)
-                # print(instrs)
+                instrs = self.select_instr(expr)
             case Expr(expr):
-                #TODO
-                instrs = select_instr(expr)
-                # print(stmt)
-                # print(instrs)
+                instrs = self.select_instr(expr)
+            # Trivial assignment
             case Assign([Name(var)], expr):
                 instrs = self.assign_helper(var, expr, Variable=Variable)
-                # print(stmt)
-                # print(instrs)
             case Goto(label):
                 instrs = [Jump(label)]
             case If(Compare(atm1, [cmp], [atm2]), [Goto(label1)], [Goto(label2)]):
@@ -553,6 +552,7 @@ class Compiler:
                     new_body_temp = [self.select_stmt(stmt) for stmt in v]
                     stmts_temp = []
                     for stmts in new_body_temp:
+                        # print(stmts)
                         stmts_temp += stmts
                     new_body[k] = stmts_temp
                 # new_body["main"] = []

@@ -12,11 +12,13 @@ import interp_Lif
 import interp_Lwhile
 import interp_Ltup
 import interp_Cif
+import interp_Ctup
 import type_check_Lvar
 import type_check_Lif
 import type_check_Lwhile
 import type_check_Ltup
 import type_check_Cif
+import type_check_Ctup
 from utils import enable_tracing, run_tests, run_one_test
 from interp_x86.eval_x86 import interp_x86
 
@@ -92,17 +94,22 @@ interp_while_dict = {
 # Test options for Ltup
 
 typecheckLtup = type_check_Ltup.TypeCheckLtup().type_check
+typecheckCtup = type_check_Ctup.TypeCheckCtup().type_check
 interpLtup = interp_Ltup.InterpLtup().interp
+interpCtup = interp_Ctup.InterpCtup().interp
 
 typecheck_tuple_dict = {
     'source': typecheckLtup,
     'expose_allocation': typecheckLtup,
     'remove_complex_operands': typecheckLtup,
+    'explicate_control': typecheckCtup
 }
 
 interp_tuple_dict = {
     'expose_allocation': interpLtup,
     'remove_complex_operands': interpLtup,
+    'explicate_control': interpCtup,
+    'select_instructions': interp_x86,
 }
 
 if False:
@@ -120,9 +127,9 @@ else:
     # run_tests('var', compiler_register, 'var',
             #   typecheck_dict,
             #   interp_dict)
-    run_tests('while', compiler_register, 'while',
-              typecheck_while_dict,
-              interp_while_dict)
+    # run_tests('while', compiler_register, 'while',
+            #   typecheck_while_dict,
+            #   interp_while_dict)
     run_tests('tuple', compiler_ltup, 'tuple',
               typecheck_tuple_dict,
               interp_tuple_dict)
