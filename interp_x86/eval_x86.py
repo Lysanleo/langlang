@@ -12,7 +12,7 @@ from interp_x86.parser_x86 import x86_parser, x86_parser_instrs
 
 def interp_x86(program):
     x86_program = convert_program(program)
-    emu = X86Emulator(logging=False)
+    emu = X86Emulator(logging=True)
     x86_output = emu.eval_program(x86_program)
     for s in x86_output:
         print(s, end='')
@@ -23,6 +23,7 @@ class FunPointer:
 
 class X86Emulator:
     def __init__(self, logging=True):
+        # print("Meow Meow", flush=True)
         self.registers = defaultdict(lambda: None)
         self.memory = defaultdict(lambda: None)
         self.variables = defaultdict(lambda: None)
@@ -165,6 +166,8 @@ class X86Emulator:
 
 
     def eval_arg(self, a):
+        # print(a)
+        print(self.global_vals)
         if a.data == 'reg_a':
             return self.registers[str(a.children[0])]
         elif a.data == 'var_a':
