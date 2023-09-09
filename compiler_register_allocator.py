@@ -171,17 +171,18 @@ class Compiler(compiler.Compiler):
         match p:
             case X86Program(instrs) if isinstance(instrs, Dict):
                 instr_la_map : Dict[Label, Dict[int, Set[location]]] = \
-                        dict([(key, {}) for key in instrs.keys()])
+                    dict([(key, {}) for key in instrs.keys()])
                 self.cfg = self.build_CFG(instrs)
                 live_before_block : Dict[Label, Set[location]] =\
                     {k:set() for k in instr_la_map.keys()}
                 # Transfer for dataflow_analysis
-                def transfer(label : Label,
-                             liveafter : Set[location]
-                            ) -> Set[location]:
+                def transfer(
+                    label : Label,
+                    liveafter : Set[location]
+                ) -> Set[location]:
                     # Side Effects
                     # - Update live after set for each instrument
-                    # - Update live before block set for each block
+                    # - Update live before set for each block
                     # if label in ["main", "conclusion"]:
                         # return set()
                     inss = instrs[label]
@@ -220,12 +221,13 @@ class Compiler(compiler.Compiler):
     # Build Interference
     ############################################################################
 
-    def build_interference(self,
-                           p: X86Program,
-                           live_after: Dict[Label, 
-                                            Dict[int,
-                                                 Set[location]]]
-                          ) -> UndirectedAdjList:
+    def build_interference(
+        self,
+        p: X86Program,
+        live_after: Dict[Label,
+                         Dict[int,
+                              Set[location]]]
+    ) -> UndirectedAdjList:
         inter_graph = UndirectedAdjList()
         body = p.get_body()
         # BUG For while program, there exists cycle in cfg. So result of topo is not right
@@ -245,6 +247,7 @@ class Compiler(compiler.Compiler):
         # for blk in topo:
             instrs = body[blk] if not (blk in ["conclusion", "main"]) else []
             for i in range(len(instrs)):
+                # TODO 此处的实现可以优化,为了利用open-recursive, 可以将此处单独抽象
                 match instrs[i]:
                     case Callq(_,_):
                         for v in live_after[blk][i]:
@@ -383,8 +386,10 @@ class Compiler(compiler.Compiler):
     # - save callee allocated list
     # - Minimum allocation number
 
-    def allocate_registers(self, p: X86Program,
-                           graph: UndirectedAdjList) -> X86Program:
+    def allocate_registers(
+        self, p: X86Program,
+        graph: UndirectedAdjList
+    ) -> X86Program:
         color = self.color_graph(graph, self.get_variables(graph))
         print(color)
         body = p.get_body()
