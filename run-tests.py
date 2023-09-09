@@ -22,10 +22,9 @@ import type_check_Ctup
 from utils import enable_tracing, run_tests, run_one_test
 from interp_x86.eval_x86 import interp_x86
 
-enable_tracing()
 
 compiler = compiler.Compiler()
-compiler_register = compiler_register_allocator.Compiler()
+compiler_ra = compiler_register_allocator.Compiler()
 compiler_ltup = compiler_ltup.CompilerLtup()
 
 # Test Options for Lvar
@@ -109,7 +108,7 @@ interp_tuple_dict = {
     'expose_allocation': interpLtup,
     'remove_complex_operands': interpLtup,
     'explicate_control': interpCtup,
-    'select_instructions': interp_x86,
+    # 'select_instructions': interp_x86,
 }
 
 if False:
@@ -121,13 +120,13 @@ if False:
                  interp_dict)
 else:
     enable_tracing()
-    # run_tests('if', compiler_register, 'if',
+    # run_tests('if', compiler_ra, 'if',
             #   typecheck_if_dict,
             #   interp_if_dict)
-    # run_tests('var', compiler_register, 'var',
+    # run_tests('var', compiler_ra, 'var',
             #   typecheck_dict,
             #   interp_dict)
-    # run_tests('while', compiler_register, 'while',
+    # run_tests('while', compiler_ra, 'while',
             #   typecheck_while_dict,
             #   interp_while_dict)
     run_tests('tuple', compiler_ltup, 'tuple',

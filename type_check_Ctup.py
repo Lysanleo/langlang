@@ -28,6 +28,7 @@ class TypeCheckCtup(TypeCheckCwhile):
         return super().type_check_atm(e, env)
   
   def type_check_exp(self, e, env):
+    # print(e)
     match e:
         case Compare(left, [cmp], [right]) if isinstance(cmp, Is):
           l = self.type_check_exp(left, env)
@@ -54,6 +55,8 @@ class TypeCheckCtup(TypeCheckCwhile):
               return Bottom()
             case _:
               raise Exception('error, expected a tuple, not ' + repr(tup_t))
+        case GlobalValue(name):
+          return self.type_check_atm(e, env)
         case _:
           return super().type_check_exp(e, env)
 
