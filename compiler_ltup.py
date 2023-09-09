@@ -1,13 +1,18 @@
+import pprint
 import re
 from types import GenericAlias
 import compiler
+import compiler_register_allocator
 from ast import *
+from graph import UndirectedAdjList
 from utils import *
 from x86_ast import *
 import x86_ast
 from data_type import *
 
-class CompilerLtup(compiler.Compiler):
+pp = pprint.PrettyPrinter()
+class CompilerLtup(compiler_register_allocator.Compiler):
+
 
     ############################################################################
     # Expose Allocation
@@ -183,6 +188,8 @@ class CompilerLtup(compiler.Compiler):
             case Module(body):
                 return super().explicate_control(p)
 
+    var_types = dict()
+
     ############################################################################
     # Select Instructions
     ############################################################################
@@ -221,8 +228,8 @@ class CompilerLtup(compiler.Compiler):
                         # print(tup_type)
                         # print(isinstance(tup_type, GenericAlias))
                         # print(tup_type.types)
-                        instrs.append(Instr('movq', [Global('free_ptr'), Reg('r11')]))
-                        instrs.append(Instr('addq', [Immediate(8*(bytes+1)), Global('free_ptr')]))
+                        instrs.append(Instr('movq', [GlobalValue('free_ptr'), Reg('r11')]))
+                        instrs.append(Instr('addq', [Immediate(8*(bytes+1)), GlobalValue('free_ptr')]))
                         instrs.append(Instr('movq', [Immediate(self.compute_tuple_tag(tup_type)), Deref('r11', 0)]))
                         instrs.append(Instr('movq', [Reg('r11'), Variable(var+"'")]))
                     case Compare(operand1, [Is() as cmp], operand2):
@@ -232,7 +239,7 @@ class CompilerLtup(compiler.Compiler):
                         instrs.append(Instr("movzbq", [ByteReg('al'), Variable(var)]))
                         return instrs
                     case GlobalValue(gv):
-                        instrs.append(Instr('movq', [Global('free_ptr'), Variable(var)]))
+                        instrs.append(Instr('movq', [GlobalValue('free_ptr'), Variable(var)]))
                     case _:
                         instrs = super().assign_helper(var, rhs, Variable)
             case _:
@@ -267,4 +274,74 @@ class CompilerLtup(compiler.Compiler):
         return instrs
     
     def select_instructions(self, p: Module | CProgram) -> X86Program:
+        pp.pprint(p.var_types)
+        # 保存Tyck得到的类型, 用于计算之后的相干图
+        if isinstance(p, CProgram):
+            self.var_types = p.var_types
         return super().select_instructions(p)
+
+
+    ############################################################################
+    # Build Interference
+    ############################################################################
+
+    
+
+    def build_interference(
+        self,
+        p: X86Program,
+        live_after: Dict[Label,
+                         Dict[int,
+                              Set[location]]]
+    ) -> UndirectedAdjList:
+        inter_graph = UndirectedAdjList()
+        body = p.get_body()
+        instrs = []
+        for blk in self.cfg.verties():
+            instrs = body[blk] if not (blk in ["conclusion", "main"]) else []
+            for i in range(len(instrs)):
+                match instrs[i]:
+                    case Callq(_,_):
+                        for v in live_after[blk][i]:
+                            for creg in self.caller_saved_regs:
+                                inter_graph.add_edge(v,creg)
+                    case Instr('movq', [arg1, arg2]):
+                        pass
+                    case Instr('movzbq', [arg1, arg2]):
+                        pass
+                    case _:
+                        pass
+        return inter_graph
+    
+    ############################################################################
+    # Allocate Registers
+    ############################################################################
+
+    def allocate_registers(
+        self, p: X86Program,
+        graph: UndirectedAdjList
+    ) -> X86Program:
+        pass
+
+    # ############################################################################
+    # # Assign Homes
+    # ############################################################################
+
+    def assign_homes(self, pseudo_x86: X86Program) -> X86Program:
+        super().assign_homes(pseudo_x86)
+
+    # ###########################################################################
+    # # Patch Instructions
+    # ###########################################################################
+
+    def patch_instructions(self, p: X86Program) -> X86Program:
+        x86prog = super().patch_instructions(p)
+        return x86prog
+
+    # ###########################################################################
+    # # Prelude & Conclusion
+    # ###########################################################################
+
+    def prelude_and_conclusion(self, p: X86Program) -> X86Program:
+        # Calculate stack_sapce
+        pass
