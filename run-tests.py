@@ -125,7 +125,7 @@ else:
             #   interp_if_dict)
     # run_tests('var', compiler_ra, 'var',
             #   typecheck_dict,
-            #   interp_dict)
+            #   interp_dict
     # run_tests('while', compiler_ra, 'while',
             #   typecheck_while_dict,
             #   interp_while_dict)

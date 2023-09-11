@@ -1,5 +1,6 @@
 import compiler
 import math
+from compiler_ltup import CompilerLtup
 from graph import *
 from typing import List, Tuple, Set, Dict
 from ast import *
@@ -221,6 +222,39 @@ class Compiler(compiler.Compiler):
     # Build Interference
     ############################################################################
 
+    # Side-Effect: Modify Intererence Graph directly
+    def add_interference(
+        self,
+        live_after,
+        blk,
+        i, 
+        instrs,
+        inter_graph 
+    ):
+        match instrs[i]:
+            case Callq(_,_):
+                for v in live_after[blk][i]:
+                    for creg in self.caller_saved_regs:
+                        # print(v, "edging")
+                        inter_graph.add_edge(v,creg)
+            case Instr('movq', [arg1, arg2]):
+                for v in live_after[blk][i]:
+                    if v != arg1 and v != arg2:
+                        inter_graph.add_edge(v, arg2)
+                    inter_graph.add_vertex(v)
+            case Instr('movzbq', [arg1, arg2]):
+                for v in live_after[blk][i]:
+                    if v != arg1 and v != arg2:
+                        inter_graph.add_edge(v, arg2)
+                    inter_graph.add_vertex(v)
+            case _:
+                for v in live_after[blk][i]:
+                    for d in self.write_vars(instrs[i]):
+                        # v != d
+                        if d != v:
+                            inter_graph.add_edge(v, d)
+                    inter_graph.add_vertex(v)
+
     def build_interference(
         self,
         p: X86Program,
@@ -248,29 +282,8 @@ class Compiler(compiler.Compiler):
             instrs = body[blk] if not (blk in ["conclusion", "main"]) else []
             for i in range(len(instrs)):
                 # TODO 此处的实现可以优化,为了利用open-recursive, 可以将此处单独抽象
-                match instrs[i]:
-                    case Callq(_,_):
-                        for v in live_after[blk][i]:
-                            for creg in self.caller_saved_regs:
-                                # print(v, "edging")
-                                inter_graph.add_edge(v,creg)
-                    case Instr('movq', [arg1, arg2]):
-                        for v in live_after[blk][i]:
-                            if v != arg1 and v != arg2:
-                                inter_graph.add_edge(v, arg2)
-                            inter_graph.add_vertex(v)
-                    case Instr('movzbq', [arg1, arg2]):
-                        for v in live_after[blk][i]:
-                            if v != arg1 and v != arg2:
-                                inter_graph.add_edge(v, arg2)
-                            inter_graph.add_vertex(v)
-                    case _:
-                        for v in live_after[blk][i]:
-                            for d in self.write_vars(instrs[i]):
-                                # v != d
-                                if d != v:
-                                    inter_graph.add_edge(v, d)
-                            inter_graph.add_vertex(v)
+                # DONE
+                self.add_interference(live_after,blk,i,instrs,inter_graph)
         # v_list = {s for i in instrs for s in live_after[i]}
         # print(inter_graph)
         return inter_graph
@@ -278,6 +291,7 @@ class Compiler(compiler.Compiler):
     ############################################################################
     # Allocate Registers
     ############################################################################
+
 
     # reg_map :: Integer -> Register
     reg_map = {0: Reg('rcx'), 1: Reg('rdx'), 2: Reg('rsi'), 3: Reg('rdi'),
@@ -296,25 +310,54 @@ class Compiler(compiler.Compiler):
         for k, v in vrmap.items():
             print(f"{k} |-> {v[0]}")
 
+    def allocate_stack(
+        self,
+        var:Variable,
+        regs_left:list[int],
+        reg_map:dict,
+        regints:set
+    ) -> Dict:
+        self.stack_var_num += 1
+        # Stack Space, n(%rbp)代表常规栈空间
+        deref = Deref('rbp', self.stack_var_num * (-8))
+        new_map_k = self.stack_var_num - 1 + len(regints)
+        reg_map[new_map_k] = deref
+        regints.add(new_map_k)          #Update regints
+        regs_left.append(new_map_k)
+        return reg_map
+    
+    spilled_stack_variables = []
+
+    def add_spilled_varmapkey(self, variable:Variable, varmapkey:int):
+        self.spilled_stack_variables.add(varmapkey)
+
+    def calculate_spilled_variables(self):
+        return self.spilled_stack_variables
+
     # Returns the coloring and the set of spilled variables.
     # TODO: Handle stack allocate
-    def color_graph(self,
-                    graph: UndirectedAdjList,
-                    variables: Set[location]) -> Tuple[Dict[location, int], Set[location]]:
+    def color_graph(
+        self,
+        graph: UndirectedAdjList,
+        variables: Set[location]
+    ) -> Tuple[Dict[location,int],Set[location]]:
         reg_map = self.reg_map
-        regints:set[int] =set(range(len(reg_map)))
+        regints:set[int] =set(reg_map.keys())
         location_reg_map = {}
-        spilled_variables = set()
+        # spilled_variables = set()
         
         def get_adjacent_reg_map_int(variable: Variable) -> set[location]:
             regs = set(reg_map.values())
             edged_caller_regs = regs & set(graph.adjacent(variable))
             caller_reg_ints = {i for i in reg_map if reg_map[i] in edged_caller_regs}
             return caller_reg_ints
+
         # Indicate the saturation for each variables
+        # L : variable -> [target_location, [reg_ints]]
+        # Target_Location暂时None代表无, will be mutate in-place
         L = {l:[None, get_adjacent_reg_map_int(l)] for l in variables}
 
-        # Define sasturated_node_Q
+        # Define sasturated_node_Q, a priority queue
         # Provide most saturated vertex in interference graph
         def less(x, y):
             return len(L[x.key][1]) < len(L[y.key][1])
@@ -331,20 +374,17 @@ class Compiler(compiler.Compiler):
             v = saturated_v_Q.pop()     #Get the most saturaed vertex
             # BUG : Checking if avaliable register set is empty
             regs_left = list(regints - L[v][1])
-            if len(regs_left) == 0:
-                self.stack_var_num += 1
-                deref = Deref('rbp', self.stack_var_num * (-8))
-                new_map_k = self.stack_var_num - 1 + len(regs_left)
-                reg_map[new_map_k] = deref
-                regints.add(new_map_k)          #Update regints
-                regs_left.append(new_map_k)
+            # Spilled Var = Spilled and TupleType
+            if regs_left == []:
+                reg_map = self.allocate_stack(v,regs_left,reg_map,regints)
             # update allocated_cee_regs
             target_regint = regs_left[0]
-            if self.reg_map[target_regint] in self.callee_saved_regs:
+            # Record used callee register
+            if reg_map[target_regint] in self.callee_saved_regs:
                 self.allocated_cee_regs.add(target_regint)
             # update spilled variables
-            if isinstance(target_regint, Deref):
-                spilled_variables.add(v)
+            if isinstance(reg_map[target_regint], Deref):
+                self.add_spilled_varmapkey(v, target_regint)
             # Update L[v][0]
             L[v][0] = target_regint
             # Update adjacent L[adj][1]
@@ -357,9 +397,12 @@ class Compiler(compiler.Compiler):
             # print("\n")
         location_reg_map = {k:v[0] for k,v in L.items()}
 
-        # self.pretty_print_vrmap(L)
+        # Update Global state
+        self.reg_map = reg_map
+
+        # self.pretty_printzhuang tai_vrmap(L)
         # return (lrmap, set(L.keys()))
-        return (location_reg_map, spilled_variables)
+        return (location_reg_map, self.calculate_spilled_variables())
 
     # Select according to map for variable locations
     def select_color(self, a:location, color) -> location:
@@ -386,21 +429,28 @@ class Compiler(compiler.Compiler):
     # - save callee allocated list
     # - Minimum allocation number
 
+    # 完成以下任务:
+    # 1. 根据相干图完成对变量的上色(寄存器分配)
+    # 2. 计算得到已使用的callee saved regs, 并计算存储callee regs需要的栈空间
+    # 3. 替换分配结果
+    # -> 经过替换的x86
     def allocate_registers(
-        self, p: X86Program,
+        self,
+        p: X86Program,
         graph: UndirectedAdjList
     ) -> X86Program:
         color = self.color_graph(graph, self.get_variables(graph))
-        print(color)
+        # print(color)
         body = p.get_body()
         # used callee saved registers
         p.used_callee = set([self.reg_map[s] for s in self.allocated_cee_regs])
         # offset for stack space in reg_map
-        offset = 8*len(p.used_callee)
-        for key,loc in self.reg_map.items():
-            match loc:
-                case Deref("rbp", off1):
-                    self.reg_map[key] = Deref("rbp", off1 - offset)
+        # DONE Already handled in color_graph
+        # offset = 8*len(p.used_callee)
+        # for key,loc in self.reg_map.items():
+            # match loc:
+                # case Deref("rbp", off1):
+                    # self.reg_map[key] = Deref("rbp", off1 - offset)
         # allocate registers
         for block,instrs in body.items():
             body[block] = [self.replace_in_instr(i, color) for i in instrs]
