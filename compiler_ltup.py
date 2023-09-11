@@ -188,11 +188,12 @@ class CompilerLtup(compiler_register_allocator.Compiler):
             case Module(body):
                 return super().explicate_control(p)
 
-    var_types = dict()
 
     ############################################################################
     # Select Instructions
     ############################################################################
+
+    tup_vars = dict()
 
     def compute_tuple_tag(self, tup_type:TupleType) -> int:
         # type_args = tup_type.__args__
@@ -228,8 +229,8 @@ class CompilerLtup(compiler_register_allocator.Compiler):
                         # print(tup_type)
                         # print(isinstance(tup_type, GenericAlias))
                         # print(tup_type.types)
-                        instrs.append(Instr('movq', [GlobalValue('free_ptr'), Reg('r11')]))
-                        instrs.append(Instr('addq', [Immediate(8*(bytes+1)), GlobalValue('free_ptr')]))
+                        instrs.append(Instr('movq', [Global('free_ptr'), Reg('r11')]))
+                        instrs.append(Instr('addq', [Immediate(8*(bytes+1)), Global('free_ptr')]))
                         instrs.append(Instr('movq', [Immediate(self.compute_tuple_tag(tup_type)), Deref('r11', 0)]))
                         instrs.append(Instr('movq', [Reg('r11'), Variable(var+"'")]))
                     case Compare(operand1, [Is() as cmp], operand2):
@@ -239,7 +240,7 @@ class CompilerLtup(compiler_register_allocator.Compiler):
                         instrs.append(Instr("movzbq", [ByteReg('al'), Variable(var)]))
                         return instrs
                     case GlobalValue(gv):
-                        instrs.append(Instr('movq', [GlobalValue('free_ptr'), Variable(var)]))
+                        instrs.append(Instr('movq', [Global('free_ptr'), Variable(var)]))
                     case _:
                         instrs = super().assign_helper(var, rhs, Variable)
             case _:
@@ -277,7 +278,9 @@ class CompilerLtup(compiler_register_allocator.Compiler):
         pp.pprint(p.var_types)
         # 保存Tyck得到的类型, 用于计算之后的相干图
         if isinstance(p, CProgram):
-            self.var_types = p.var_types
+            # self.var_types = p.var_types
+            self.tup_vars = list({ Variable(var_name+"'"):typ  for (var_name, typ) in p.var_types.items() if isinstance(typ, TupleType)}.keys())
+            pp.pprint(self.tup_vars)
         return super().select_instructions(p)
 
 
@@ -285,50 +288,109 @@ class CompilerLtup(compiler_register_allocator.Compiler):
     # Build Interference
     ############################################################################
 
-    
-
-    def build_interference(
+    # 为TupleType的Variable以及Call Collecter进行特殊处理
+    # Edge TupleType var with every allocatable reg, which is `reg_map.value()`
+    def add_interference(
         self,
-        p: X86Program,
-        live_after: Dict[Label,
-                         Dict[int,
-                              Set[location]]]
-    ) -> UndirectedAdjList:
-        inter_graph = UndirectedAdjList()
-        body = p.get_body()
-        instrs = []
-        for blk in self.cfg.verties():
-            instrs = body[blk] if not (blk in ["conclusion", "main"]) else []
-            for i in range(len(instrs)):
-                match instrs[i]:
-                    case Callq(_,_):
-                        for v in live_after[blk][i]:
-                            for creg in self.caller_saved_regs:
-                                inter_graph.add_edge(v,creg)
-                    case Instr('movq', [arg1, arg2]):
-                        pass
-                    case Instr('movzbq', [arg1, arg2]):
-                        pass
-                    case _:
-                        pass
-        return inter_graph
+        live_after,
+        blk,
+        i, 
+        instrs,
+        inter_graph 
+    ):
+        # 在相干图中为TupleType的变量连上每一个可分配的Regs.
+        def tup_vars_edge_helper(var:Variable, addeds:list[Variable]):
+            if var in self.tup_vars and not (var in addeds):
+                print(instrs[i])
+                for r in regs:
+                    inter_graph.add_edge(var, r)
+                addeds.append(var)
+        regs = set(self.reg_map.values())
+        added_tup_var = []
+        match instrs[i]:
+            case Callq(_,_):
+                for v in live_after[blk][i]:
+                    for creg in self.caller_saved_regs:
+                        # print(v, "edging")
+                        inter_graph.add_edge(v,creg)
+            case Instr('movq', [arg1, arg2]):
+                for v in live_after[blk][i]:
+                    if v != arg1 and v != arg2:
+                        inter_graph.add_edge(v, arg2)
+                    tup_vars_edge_helper(arg1, added_tup_var)
+                    tup_vars_edge_helper(arg2, added_tup_var)
+                    inter_graph.add_vertex(v)
+            case Instr('movzbq', [arg1, arg2]):
+                for v in live_after[blk][i]:
+                    if v != arg1 and v != arg2:
+                        inter_graph.add_edge(v, arg2)
+                    inter_graph.add_vertex(v)
+            case _:
+                for v in live_after[blk][i]:
+                    for d in self.write_vars(instrs[i]):
+                        # v != d
+                        if d != v:
+                            inter_graph.add_edge(v, d)
+                    inter_graph.add_vertex(v)
+        self.root_stack_var_num = len(added_tup_var) 
+
+    def build_interference(self, p: X86Program, live_after: Dict[Label, Dict[int, Set[location]]]) -> UndirectedAdjList:
+        pp.pprint(live_after)
+        return super().build_interference(p, live_after)
     
     ############################################################################
     # Allocate Registers
     ############################################################################
 
+    root_stack_var_num = 0
+
+    def calculate_spilled_variables(self):
+        return self.spilled_stack_variables + self.tup_vars
+
+    def add_spilled_varmapkey(self, variable, varmapkey):
+        if not (variable in self.tup_vars):
+            self.spilled_stack_variables.add(varmapkey)
+
+    # allocate :: ... -> new reg-int-allocation map
+    def allocate_stack(
+        self,
+        var:Variable,
+        regs_left:list[int],
+        reg_map:dict,
+        regints:set
+    ) -> Dict:
+        # TupleType Case
+        if var in self.tup_vars:
+            # Root Stack Space, n(%r15)代表root stack空间
+            deref = Deref('r15', self.root_stack_var_num*8) 
+            self.root_stack_var_num += 1
+        else: 
+            # Stack Space, n(%rbp)代表常规栈空间
+            self.stack_var_num += 1
+            deref = Deref('rbp', self.stack_var_num * (-8))
+        new_map_k = self.stack_var_num + self.root_stack_var_num - 1 + len(reg_map)
+        reg_map[new_map_k] = deref
+        regints.add(new_map_k)
+        regs_left.append(new_map_k)
+        return reg_map
+
+    # All tuple variables are spilled, Thus
+    # 1. root_stack_var_num = length of self.tup_vars
+    # 2. 
     def allocate_registers(
-        self, p: X86Program,
+        self,
+        p: X86Program,
         graph: UndirectedAdjList
-    ) -> X86Program:
-        pass
+    ) -> UndirectedAdjList:
+        return super().allocate_registers(p, graph)
+
 
     # ############################################################################
     # # Assign Homes
     # ############################################################################
 
     def assign_homes(self, pseudo_x86: X86Program) -> X86Program:
-        super().assign_homes(pseudo_x86)
+        return super().assign_homes(pseudo_x86)
 
     # ###########################################################################
     # # Patch Instructions

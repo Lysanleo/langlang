@@ -1,26 +1,26 @@
 	.align 16
 block.18:
-    cmpq $0, %rcx
+    cmpq $0, %rdx
     jg block.20
     jmp block.19
 
 	.align 16
 block.19:
-    movq %rdx, %rdi
+    movq %rcx, %rdi
     callq print_int
     movq $0, %rax
     jmp conclusion
 
 	.align 16
 block.20:
-    addq %rcx, %rdx
-    subq $1, %rcx
+    addq %rdx, %rcx
+    subq $1, %rdx
     jmp block.18
 
 	.align 16
 start:
-    movq $5, %rcx
-    movq $0, %rdx
+    movq $5, %rdx
+    movq $0, %rcx
     jmp block.18
 
 	.globl main

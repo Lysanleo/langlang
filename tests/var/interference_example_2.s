@@ -1,11 +1,10 @@
 	.align 16
 start:
-    movq $1, %rdx
-    movq $42, %rcx
-    addq $7, %rdx
-    movq %rdx, %rsi
-    addq %rcx, %rsi
-    movq %rdx, %rcx
+    movq $1, %rcx
+    movq $42, %rdx
+    addq $7, %rcx
+    movq %rcx, %rsi
+    addq %rdx, %rsi
     negq %rcx
     movq %rsi, %rdx
     addq %rcx, %rdx
