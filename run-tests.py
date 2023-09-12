@@ -108,6 +108,7 @@ interp_tuple_dict = {
     'expose_allocation': interpLtup,
     'remove_complex_operands': interpLtup,
     'explicate_control': interpCtup,
+    # 'assign_homes': interp_x86,
     # 'select_instructions': interp_x86,
 }
 
