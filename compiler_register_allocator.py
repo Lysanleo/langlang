@@ -1,6 +1,5 @@
 import compiler
 import math
-from compiler_ltup import CompilerLtup
 from graph import *
 from typing import List, Tuple, Set, Dict
 from ast import *

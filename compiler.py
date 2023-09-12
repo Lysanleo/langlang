@@ -690,17 +690,21 @@ class Compiler:
                 for r in p.used_callee:
                     temp1.append(Instr('pushq', [r]))
                     temp2.append(Instr('popq', [r]))
-                temp2.reverse
+                temp2.reverse()
                 # Prelude Main
-                body['main'] = [Instr('pushq', [Reg('rbp')])
-                               , Instr('movq', [Reg('rsp'), Reg('rbp')])] \
-                               + temp1 \
-                               + [Instr('subq', [Immediate(p.stack_space), Reg('rsp')]), Jump("start")]
+                body['main'] = \
+                    [ Instr('pushq', [Reg('rbp')])
+                    , Instr('movq', [Reg('rsp'), Reg('rbp')])] \
+                    + temp1 \
+                    +[Instr('subq', [Immediate(p.stack_space), Reg('rsp')])
+                    , Jump("start")]
+
                 # Conclusion
-                body["conclusion"] =[Instr('addq', [Immediate(p.stack_space), Reg('rsp')])] \
-                                    + temp2 \
-                                    + [Instr('popq', [Reg('rbp')])
-                                      , Retq()]
+                body["conclusion"] = \
+                    [ Instr('addq', [Immediate(p.stack_space), Reg('rsp')])] \
+                    + temp2 \
+                    +[Instr('popq', [Reg('rbp')])
+                    , Retq()]
 
                 # x86prog = X86Program(body)
                 # x86prog.stack_space = p.stack_space

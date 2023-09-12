@@ -1,3 +1,4 @@
+import math
 import pprint
 import re
 from types import GenericAlias
@@ -164,7 +165,7 @@ class CompilerLtup(compiler_register_allocator.Compiler):
                 # print(new_body_temp == [None]) => True
                 for stmts in new_body_temp:
                     new_body = new_body + stmts
-                print(new_body)
+                # print(new_body)
         return Module(new_body)
 
     ############################################################################
@@ -229,6 +230,7 @@ class CompilerLtup(compiler_register_allocator.Compiler):
                         # print(tup_type)
                         # print(isinstance(tup_type, GenericAlias))
                         # print(tup_type.types)
+                        # Allocate for tuple
                         instrs.append(Instr('movq', [Global('free_ptr'), Reg('r11')]))
                         instrs.append(Instr('addq', [Immediate(8*(bytes+1)), Global('free_ptr')]))
                         instrs.append(Instr('movq', [Immediate(self.compute_tuple_tag(tup_type)), Deref('r11', 0)]))
@@ -275,7 +277,7 @@ class CompilerLtup(compiler_register_allocator.Compiler):
         return instrs
     
     def select_instructions(self, p: Module | CProgram) -> X86Program:
-        pp.pprint(p.var_types)
+        # pp.pprint(p.var_types)
         # 保存Tyck得到的类型, 用于计算之后的相干图
         if isinstance(p, CProgram):
             # self.var_types = p.var_types
@@ -301,7 +303,7 @@ class CompilerLtup(compiler_register_allocator.Compiler):
         # 在相干图中为TupleType的变量连上每一个可分配的Regs.
         def tup_vars_edge_helper(var:Variable, addeds:list[Variable]):
             if var in self.tup_vars and not (var in addeds):
-                print(instrs[i])
+                # print(instrs[i])
                 for r in regs:
                     inter_graph.add_edge(var, r)
                 addeds.append(var)
@@ -335,7 +337,7 @@ class CompilerLtup(compiler_register_allocator.Compiler):
         self.root_stack_var_num = len(added_tup_var) 
 
     def build_interference(self, p: X86Program, live_after: Dict[Label, Dict[int, Set[location]]]) -> UndirectedAdjList:
-        pp.pprint(live_after)
+        # pp.pprint(live_after)
         return super().build_interference(p, live_after)
     
     ############################################################################
@@ -343,13 +345,17 @@ class CompilerLtup(compiler_register_allocator.Compiler):
     ############################################################################
 
     root_stack_var_num = 0
+    spilled_root_stack_variables = []
 
     def calculate_spilled_variables(self):
         return self.spilled_stack_variables + self.tup_vars
 
+    # record mapint for each variable corresponding stack location
     def add_spilled_varmapkey(self, variable, varmapkey):
         if not (variable in self.tup_vars):
             self.spilled_stack_variables.add(varmapkey)
+        else:
+            self.spilled_root_stack_variables.add(varmapkey)
 
     # allocate :: ... -> new reg-int-allocation map
     def allocate_stack(
@@ -362,6 +368,7 @@ class CompilerLtup(compiler_register_allocator.Compiler):
         # TupleType Case
         if var in self.tup_vars:
             # Root Stack Space, n(%r15)代表root stack空间
+            # Root Stack 其实在栈上(?), 所以它是向上增长的.
             deref = Deref('r15', self.root_stack_var_num*8) 
             self.root_stack_var_num += 1
         else: 
@@ -384,7 +391,6 @@ class CompilerLtup(compiler_register_allocator.Compiler):
     ) -> UndirectedAdjList:
         return super().allocate_registers(p, graph)
 
-
     # ############################################################################
     # # Assign Homes
     # ############################################################################
@@ -397,8 +403,10 @@ class CompilerLtup(compiler_register_allocator.Compiler):
     # ###########################################################################
 
     def patch_instructions(self, p: X86Program) -> X86Program:
-        x86prog = super().patch_instructions(p)
-        return x86prog
+        # x86prog = super().patch_instructions(p)
+        # return x86prog
+        # TODO fix the size calc
+        pass
 
     # ###########################################################################
     # # Prelude & Conclusion
@@ -406,4 +414,68 @@ class CompilerLtup(compiler_register_allocator.Compiler):
 
     def prelude_and_conclusion(self, p: X86Program) -> X86Program:
         # Calculate stack_sapce
-        pass
+        match p:
+            case X86Program(body):
+                main_instrs = []
+                conclusion_instrs = []
+                stack_pushes = []
+                stack_pops = []
+                call_initialize = []
+                root_stack_inits = []
+                root_stack_frees = []
+
+                # Calculate stack space' bytes
+                temp1 = math.ceil((8*(self.stack_var_num + len(p.used_callee)))/16)*16
+                A = temp1 - 8 * len(p.used_callee)
+                p.stack_space = A
+
+                # Calculate root stack space' bytes
+                root_stack_space = self.root_stack_var_num * 8
+                
+                # stack p&p
+                temp1 = []
+                temp2 = [] 
+                for r in p.used_callee:
+                    temp1.append(Instr('pushq', [r]))
+                    temp2.append(Instr('popq', [r]))
+                temp2.reverse()
+
+                stack_pushes.extend(temp1)
+                # minus rsp
+                stack_pushes.append(Instr('subq', [Immediate(p.stack_space), Reg('rsp')]))
+
+                # root_stack_inits
+                # argument heap_size and rootstack_size for calling initialize
+                # TODO The argument should determined with number of tuple.
+                call_initialize.append(Instr('movq', [Immediate(65536), Reg('rdi')]))
+                call_initialize.append(Instr('movq', [Immediate(16), Reg('rsi')]))
+                call_initialize.append(Callq("initialize",2))
+                root_stack_inits.extend(call_initialize)
+                root_stack_inits.append(Instr('movq', [Global("rootstack_begin"), Reg('r15')]))
+                for d in range(0, len(self.spilled_root_stack_variables)):
+                    root_stack_inits.append(Instr('movq', [Immediate(d*8), self.reg_map[self.spilled_root_stack_variables[d]]]))
+                root_stack_inits.append(Instr('addq', [Immediate(root_stack_space), Reg('r15')]))
+
+                # main instrs
+                main_instrs.append(Instr('pushq', [Reg('rbp')]))
+                main_instrs.append(Instr('movq', [Reg('rsp'), Reg('rbp')]))
+                main_instrs.extend(stack_pushes)
+                main_instrs.extend(root_stack_inits)
+                main_instrs.append(Jump("start"))
+
+                # root_stack_frees
+                root_stack_frees.append(Instr('subq', [Immediate(root_stack_space), Reg('r15')]))
+
+                # stack frees
+                stack_pops.append(Instr('addq', [Immediate(p.stack_space), Reg('rsp')]))
+                stack_pops.extend(temp2)
+
+                # conclusion instrs
+                conclusion_instrs.extend(root_stack_frees)
+                conclusion_instrs.extend(stack_pops)
+                conclusion_instrs.append(Instr('popq', [Reg('rbp')]))
+                conclusion_instrs.append(Retq())
+                
+                body['main'] = main_instrs
+                body["conclusion"] = conclusion_instrs
+        return p 
