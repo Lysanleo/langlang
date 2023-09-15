@@ -217,14 +217,14 @@ class CompilerLtup(compiler_register_allocator.Compiler):
         instrs = list()
         match target:
             case [Subscript(Name(var), Constant(i), Store())]:
-                instrs.append(Instr('movq', [Variable(var+"'"), Reg('r11')]))
+                instrs.append(Instr('movq', [Variable(var), Reg('r11')]))
                 instrs.append(Instr('movq', [self.select_arg(rhs), Deref('r11', 8*(i+1))]))
             # case [Name(var)] if isinstance(rhs, Subscript):
             case [Name(var)]:
                 match rhs:
                     case Subscript(Name(rhs_tuple), Constant(i), _):
-                        instrs.append(Instr('movq', [Variable(rhs_tuple+"'"), Reg('r11')]))
-                        instrs.append(Instr('movq', [Deref('r11', 8*(i+1)), Variable(var+"'")]))
+                        instrs.append(Instr('movq', [Variable(rhs_tuple), Reg('r11')]))
+                        instrs.append(Instr('movq', [Deref('r11', 8*(i+1)), Variable(var)]))
                     # RHS is allocate
                     case Allocate(bytes, tup_type):
                         # print(tup_type)
@@ -234,7 +234,7 @@ class CompilerLtup(compiler_register_allocator.Compiler):
                         instrs.append(Instr('movq', [Global('free_ptr'), Reg('r11')]))
                         instrs.append(Instr('addq', [Immediate(8*(bytes+1)), Global('free_ptr')]))
                         instrs.append(Instr('movq', [Immediate(self.compute_tuple_tag(tup_type)), Deref('r11', 0)]))
-                        instrs.append(Instr('movq', [Reg('r11'), Variable(var+"'")]))
+                        instrs.append(Instr('movq', [Reg('r11'), Variable(var)]))
                     case Compare(operand1, [Is() as cmp], operand2):
                         cc = self.cmp_helper(cmp)
                         instrs = [Instr("cmpq", [operand2, operand1])]
@@ -242,7 +242,7 @@ class CompilerLtup(compiler_register_allocator.Compiler):
                         instrs.append(Instr("movzbq", [ByteReg('al'), Variable(var)]))
                         return instrs
                     case GlobalValue(gv):
-                        instrs.append(Instr('movq', [Global('free_ptr'), Variable(var)]))
+                        instrs.append(Instr('movq', [Global(gv), Variable(var)]))
                     case _:
                         instrs = super().assign_helper(var, rhs, Variable)
             case _:
@@ -281,7 +281,7 @@ class CompilerLtup(compiler_register_allocator.Compiler):
         # 保存Tyck得到的类型, 用于计算之后的相干图
         if isinstance(p, CProgram):
             # self.var_types = p.var_types
-            self.tup_vars = list({ Variable(var_name+"'"):typ  for (var_name, typ) in p.var_types.items() if isinstance(typ, TupleType)}.keys())
+            self.tup_vars = list({ Variable(var_name):typ  for (var_name, typ) in p.var_types.items() if isinstance(typ, TupleType)}.keys())
             pp.pprint(self.tup_vars)
         return super().select_instructions(p)
 
@@ -348,14 +348,14 @@ class CompilerLtup(compiler_register_allocator.Compiler):
     spilled_root_stack_variables = []
 
     def calculate_spilled_variables(self):
-        return self.spilled_stack_variables + self.tup_vars
+        return self.spilled_stack_variables + self.spilled_root_stack_variables
 
     # record mapint for each variable corresponding stack location
     def add_spilled_varmapkey(self, variable, varmapkey):
         if not (variable in self.tup_vars):
-            self.spilled_stack_variables.add(varmapkey)
+            self.spilled_stack_variables.append(varmapkey)
         else:
-            self.spilled_root_stack_variables.add(varmapkey)
+            self.spilled_root_stack_variables.append(varmapkey)
 
     # allocate :: ... -> new reg-int-allocation map
     def allocate_stack(
@@ -403,10 +403,10 @@ class CompilerLtup(compiler_register_allocator.Compiler):
     # ###########################################################################
 
     def patch_instructions(self, p: X86Program) -> X86Program:
-        # x86prog = super().patch_instructions(p)
-        # return x86prog
         # TODO fix the size calc
-        pass
+        x86prog = super().patch_instructions(p)
+        return x86prog
+        
 
     # ###########################################################################
     # # Prelude & Conclusion
@@ -452,8 +452,12 @@ class CompilerLtup(compiler_register_allocator.Compiler):
                 call_initialize.append(Callq("initialize",2))
                 root_stack_inits.extend(call_initialize)
                 root_stack_inits.append(Instr('movq', [Global("rootstack_begin"), Reg('r15')]))
+                # TODO Duplicate inits
+                temp3 = set()
                 for d in range(0, len(self.spilled_root_stack_variables)):
-                    root_stack_inits.append(Instr('movq', [Immediate(d*8), self.reg_map[self.spilled_root_stack_variables[d]]]))
+                    temp3.add(Instr('movq', [Immediate(0), self.reg_map[self.spilled_root_stack_variables[d]]]))
+                root_stack_inits.extend(temp3)
+                root_stack_inits.append(Instr('movq', [Immediate(0), self.reg_map[self.spilled_root_stack_variables[d]]]))
                 root_stack_inits.append(Instr('addq', [Immediate(root_stack_space), Reg('r15')]))
 
                 # main instrs
