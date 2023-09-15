@@ -110,6 +110,7 @@ interp_tuple_dict = {
     'explicate_control': interpCtup,
     # 'assign_homes': interp_x86,
     # 'select_instructions': interp_x86,
+    'prelude_and_conclusion': interp_x86
 }
 
 if False:
