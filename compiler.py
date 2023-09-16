@@ -138,6 +138,7 @@ class Compiler:
     def rco_stmt(self, s: stmt) -> list[stmt]:
         new_stmts = []
         match s:
+            # this can be handled in general way just like Expr(exp)
             case Expr(Call(Name('print'), [atom])):
                 # print(atom)
                 rcotp = self.rco_exp(atom, True)

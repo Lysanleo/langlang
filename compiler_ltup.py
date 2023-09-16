@@ -19,17 +19,35 @@ class CompilerLtup(compiler_register_allocator.Compiler):
     # Expose Allocation
     ############################################################################
 
+    tups_length = {}
+    
+    def add_length(self, var, expr):
+        # print(var, expr)
+        # print(type(expr))
+        if isinstance(expr, Tuple):
+            self.tups_length[var] = len(expr.elts)
+            # print(var, "to", self.tups_length, "ADDED")
+        if isinstance(expr, Begin):
+            # print(var, "to", expr)
+            self.tups_length[var] = self.tups_length[expr.result]
+            # print("ADDED")
+        if isinstance(expr, Name):
+            self.tups_length[var] = self.tups_length[expr]
+            
+
+    # return (expr, length)
     def handle_ltup_expr(self, e:expr) -> expr:
         match e:
             # Trans to the L_alloc
             case Tuple(exprs, Load()):
+                length = len(exprs)
                 # notice that in the eoc alloc has a smaller index than inits
                 alloc_name = Name(generate_name("alloc"))
                 # inits
                 # inits = [(Name(generate_name("init")), exp) for exp in exprs]
                 inits = {i:Name(generate_name("init")) for i,_ in enumerate(exprs)}
                 # calculate bytes
-                bytes = 8 + 8 * len(exprs)
+                bytes = 8 + 8 * length
                 # condictional allocate call
                 cond = Compare(BinOp(GlobalValue("free_ptr"),Add(),Constant(bytes))
                               ,[Lt()]
@@ -38,7 +56,7 @@ class CompilerLtup(compiler_register_allocator.Compiler):
                 orelse = [Collect(bytes)]
                 conditional_call = If(cond, body, orelse)
                 # allocate assign
-                alloc_assign = Assign([alloc_name], Allocate(len(exprs), e.has_type))
+                alloc_assign = Assign([alloc_name], Allocate(length, e.has_type))
                 # assign pairs
                 subscript_assign_pairs = [(Subscript(alloc_name, Constant(i), Store()), init_name) for i,init_name in inits.items()]
                 inits_assign_pairs = [(init_name, self.handle_ltup_expr(exprs[i])) for i,init_name in inits.items()]
@@ -52,6 +70,7 @@ class CompilerLtup(compiler_register_allocator.Compiler):
                                 + sub_assigns
                 # Completed allocation expression
                 new_expr = Begin(cont_stmts, alloc_name)
+                self.add_length(new_expr.result, e)
             case BinOp(lhs_exp, op, rhs_exp):
                 new_lhs_exp = self.handle_ltup_expr(lhs_exp)
                 new_rhs_exp = self.handle_ltup_expr(rhs_exp)
@@ -78,7 +97,14 @@ class CompilerLtup(compiler_register_allocator.Compiler):
                 new_expr = Subscript(new_exp, new_index_expr, ctx)
             case Call(Name('len'), [exp]):
                 new_exp = self.handle_ltup_expr(exp)
+                # 首先len中的exp是可以被len的对象(这交由解释执行/tyck来保证)
+                # 将它转换过后的new_expr是一个C_tup中的term.
+                # 通过这种方法在这一阶段得到的length信息被使用的前提是: new_expr直到select_instruction中使用前
+                # 都不会有变动
                 new_expr = Call(Name('len'), [new_exp])
+            case Call(Name('print'), [exp]):
+                new_exp = self.handle_ltup_expr(exp)
+                new_expr = Call(Name('print'), [new_exp])
             case _:
                 new_expr = e
         return new_expr
@@ -97,7 +123,9 @@ class CompilerLtup(compiler_register_allocator.Compiler):
                 new_orelse_stmts = [self.handle_ltup_stmt(stm) for stm in orelse_stmts]
                 new_stmt = If(new_cond_exp, new_then_stmts, new_orelse_stmts)
             case Assign([lhs_var_exp], rhs_exp):
+                # print(s)
                 new_rhs_exp = self.handle_ltup_expr(rhs_exp)
+                self.add_length(lhs_var_exp, new_rhs_exp)
                 new_stmt = Assign([lhs_var_exp], new_rhs_exp)
             case _:
                 new_stmt = s
@@ -114,7 +142,20 @@ class CompilerLtup(compiler_register_allocator.Compiler):
     # Remove Complex Operands
     ############################################################################
 
+    def build_atomic_pair(
+        self,
+        atomic_p:bool,
+        exp:expr,
+        bindings:Temporaries
+    ) -> tuple[expr, Temporaries]:
+        if atomic_p:
+            new_sym = generate_name("tmp")
+            self.add_length(Name(new_sym), exp)
+            return (Name(new_sym), bindings + [(Name(new_sym), exp)])
+        return (exp, bindings)
+
     def rco_exp(self, e: expr, need_atomic: bool) -> tuple[expr, Temporaries]:
+        # pp.pprint(e)
         match e:
             case GlobalValue(name):
                 new_expr = GlobalValue(name)
@@ -136,6 +177,13 @@ class CompilerLtup(compiler_register_allocator.Compiler):
             case Allocate(length, typ):
                 new_expr = e
                 new_bindings = []
+            # BUG : expose_allocation被放在了rco之前,所以对于len((1,2,3))这样tuple的字面值在len中的情况
+            # 而这种情况非得将字面值先赋值给一个临时变量, 也就是rco pass可以处理的情况,
+            # 然后再expose_allocation, 这是expose_allocation能处理的情况, 所以这里有一个ep放在rco前/后的问题
+            # 所有一切嵌套但嵌套中的值在rco pass前/后需要额外处理的类型都面临这种困境.
+            # 需要明确一个pass只干一种事的原则, 如果我纠结于一种在两个pass之间穿梭的解决办法就会让multi-pass变得复杂
+            # 清楚这里expose只是在将tuple的创建展开成L_alloc的样子(包括在block中)
+            # 我的尝试是把一个allocation block丢在字面值那
             case Call(Name('len'), [exp]):
                 new_exp_rcotp = self.rco_exp(exp, True)
                 new_expr = Call(Name('len'), [new_exp_rcotp[0]])
@@ -145,6 +193,7 @@ class CompilerLtup(compiler_register_allocator.Compiler):
         return self.build_atomic_pair(need_atomic, new_expr, new_bindings)
                 
     def rco_stmt(self, s: stmt) -> list[stmt]:
+        # pp.pprint(s)
         match s:
             case Assign([Subscript(exp, index_expr, Store())], rhs_exp):
                 new_exp_rcotp = self.rco_exp(exp, True)
@@ -241,12 +290,15 @@ class CompilerLtup(compiler_register_allocator.Compiler):
                         instrs.append(Instr("set"+cc, [ByteReg('al')]))
                         instrs.append(Instr("movzbq", [ByteReg('al'), Variable(var)]))
                         return instrs
+                    case Call(Name('len'), [exp]):
+                        instrs.append(Instr('movq', [Immediate(self.tups_length[exp]),Variable(var)]))
                     case GlobalValue(gv):
                         instrs.append(Instr('movq', [Global(gv), Variable(var)]))
                     case _:
                         instrs = super().assign_helper(var, rhs, Variable)
             case _:
                 # print(target, rhs)
+                assert type(target) == str
                 instrs = super().assign_helper(target, rhs, Variable)
         return instrs
 
