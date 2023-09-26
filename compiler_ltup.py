@@ -6,6 +6,8 @@ import compiler
 import compiler_register_allocator
 from ast import *
 from graph import UndirectedAdjList
+from type_check_Ctup import TypeCheckCtup
+import type_check_Ltup
 from utils import *
 from x86_ast import *
 import x86_ast
@@ -32,7 +34,8 @@ class CompilerLtup(compiler_register_allocator.Compiler):
             self.tups_length[var] = self.tups_length[expr.result]
             # print("ADDED")
         if isinstance(expr, Name):
-            self.tups_length[var] = self.tups_length[expr]
+            if expr in self.tups_length:
+                self.tups_length[var] = self.tups_length[expr]
             
 
     # return (expr, length)
@@ -505,11 +508,16 @@ class CompilerLtup(compiler_register_allocator.Compiler):
                 root_stack_inits.extend(call_initialize)
                 root_stack_inits.append(Instr('movq', [Global("rootstack_begin"), Reg('r15')]))
                 # TODO Duplicate inits
-                temp3 = set()
-                for d in range(0, len(self.spilled_root_stack_variables)):
-                    temp3.add(Instr('movq', [Immediate(0), self.reg_map[self.spilled_root_stack_variables[d]]]))
-                root_stack_inits.extend(temp3)
-                root_stack_inits.append(Instr('movq', [Immediate(0), self.reg_map[self.spilled_root_stack_variables[d]]]))
+                temp3 = set(self.spilled_root_stack_variables)
+                temp4 = []
+                # pp.pprint(self.spilled_root_stack_variables)
+                added = []
+                for d in temp3:
+                    dref = self.reg_map[d]
+                    if dref not in added:
+                        temp4.append(Instr('movq', [Immediate(0), dref]))
+                        added.append(dref)
+                root_stack_inits.extend(temp4)
                 root_stack_inits.append(Instr('addq', [Immediate(root_stack_space), Reg('r15')]))
 
                 # main instrs
@@ -535,3 +543,21 @@ class CompilerLtup(compiler_register_allocator.Compiler):
                 body['main'] = main_instrs
                 body["conclusion"] = conclusion_instrs
         return p 
+
+    def compile(self, p:Module):
+        typecheckLtup = type_check_Ltup.TypeCheckLtup().type_check
+        typecheckCtup = TypeCheckCtup().type_check
+        typecheckLtup(p)
+        p = self.shrink(p)
+        typecheckLtup(p)
+        p = self.expose_allocation(p)
+        p = self.remove_complex_operands(p)
+        typecheckLtup(p)
+        p = self.explicate_control(p)
+        typecheckCtup(p)
+        p = self.select_instructions(p)
+        p = self.assign_homes(p)
+        p = self.patch_instructions(p)
+        p = self.prelude_and_conclusion(p)
+        return p
+        
