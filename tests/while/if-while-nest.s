@@ -57,10 +57,16 @@ main:
     movq %rsp, %rbp
     pushq %r12
     subq $8, %rsp
+    movq $65536, %rdi
+    movq $16, %rsi
+    callq initialize
+    movq rootstack_begin(%rip), %r15
+    addq $0, %r15
     jmp start
 
 	.align 16
 conclusion:
+    subq $0, %r15
     addq $8, %rsp
     popq %r12
     popq %rbp

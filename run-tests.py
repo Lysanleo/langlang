@@ -122,11 +122,14 @@ else:
             #   interp_if_dict)
     # run_tests('var', compiler_ra, 'var',
             #   typecheck_dict,
-            #   interp_dict
+            #   interp_dict)
     # run_tests('while', compiler_ra, 'while',
             #   typecheck_while_dict,
             #   interp_while_dict)
-    run_tests('tuple', compiler_ltup, 'tuple',
-              typecheck_tuple_dict,
-              interp_tuple_dict)
+    run_tests('while', compiler_ltup, 'while',
+              typecheck_while_dict,
+              interp_while_dict)
+    # run_tests('tuple', compiler_ltup, 'tuple',
+            #   typecheck_tuple_dict,
+            #   interp_tuple_dict)
 

@@ -48,6 +48,8 @@
                 matplotlib
                 openpyxl
                 python-lsp-server
+                mypy
+                pylsp-mypy
               ]))
             ];
           };
