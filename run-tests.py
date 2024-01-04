@@ -1,31 +1,39 @@
 import os
 import sys
 
+# fix
 sys.path.append('../python-student-support-code')
 sys.path.append('../python-student-support-code/interp_x86')
 
-import compiler
+# compiler
+import compiler as cmpl
 import compiler_register_allocator
-import compiler_ltup
+import compiler_ltup as cmpl_tup
+import compiler_lfun as cmpl_fun
+# interpreter
 import interp_Lvar
 import interp_Lif
 import interp_Lwhile
 import interp_Ltup
+import interp_Lfun
 import interp_Cif
 import interp_Ctup
+# typechecker
 import type_check_Lvar
 import type_check_Lif
 import type_check_Lwhile
 import type_check_Ltup
+import type_check_Lfun
 import type_check_Cif
 import type_check_Ctup
 from utils import enable_tracing, run_tests, run_one_test
 from interp_x86.eval_x86 import interp_x86
 
 
-compiler = compiler.Compiler()
+compiler = cmpl.Compiler()
 compiler_ra = compiler_register_allocator.Compiler()
-compiler_ltup = compiler_ltup.CompilerLtup()
+compiler_ltup = cmpl_tup.CompilerLtup()
+compiler_lfun = cmpl_fun.CompilerLfun()
 
 # Test Options for Lvar
 
@@ -113,7 +121,25 @@ interp_tuple_dict = {
     'prelude_and_conclusion': interp_x86
 }
 
+
+# Test Options for Lif
+
+typecheckLfun = type_check_Lfun.TypeCheckLfun().type_check
+# typecheckCtup = type_check_Ctup.TypeCheckCtup().type_check
+interpLfun = interp_Lfun.InterpLfun().interp
+# interpCtup = interp_Ctup.InterpCtup().interp
+
+typecheck_function_dict = {
+    'shrink': typecheckLfun
+}
+
+interp_function_dict = {
+    'shrink': interpLfun
+}
+
 if False:
+    # single test
+
     run_one_test(os.getcwd() + '/tests/var/zero.py',
                  'var',
                  compiler,
@@ -122,19 +148,31 @@ if False:
                  interp_dict)
 else:
     enable_tracing()
-    # run_tests('if', compiler_ra, 'if',
-            #   typecheck_if_dict,
-            #   interp_if_dict)
-    # run_tests('var', compiler_ra, 'var',
-            #   typecheck_dict,
-            #   interp_dict)
-    # run_tests('while', compiler_ra, 'while',
-            #   typecheck_while_dict,
-            #   interp_while_dict)
-    run_tests('while', compiler_ltup, 'while',
-              typecheck_while_dict,
-              interp_while_dict)
-    # run_tests('tuple', compiler_ltup, 'tuple',
-            #   typecheck_tuple_dict,
-            #   interp_tuple_dict)
+    enabled_test = [
+        #'if',
+        #'var',
+        #'while',
+        #'tuple',
+        'function',
+    ]
 
+    if ('if' in enabled_test):
+        run_tests('if', compiler_ra, 'if',
+                typecheck_if_dict,
+                interp_if_dict)
+    if ('var' in enabled_test):
+        run_tests('var', compiler_ra, 'var',
+                  typecheck_dict,
+                  interp_dict)
+    if ('while' in enabled_test):
+        run_tests('while', compiler_ltup, 'while',
+                  typecheck_while_dict,
+                  interp_while_dict)
+    if ('tuple' in enabled_test):
+        run_tests('tuple', compiler_ltup, 'tuple',
+                  typecheck_tuple_dict,
+                  interp_tuple_dict)
+    if ('function' in enabled_test):
+        run_tests('function', compiler_lfun, 'function',
+                  typecheck_function_dict,
+                  interp_function_dict)
