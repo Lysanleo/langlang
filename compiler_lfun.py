@@ -22,14 +22,21 @@ class CompilerLfun(compiler_ltup.CompilerLtup):
                         mainstmts.append(s)
                 new_body = defstmts + [FunctionDef('main', [], mainstmts+[Return(Constant(0))], None, IntType(),None)]
         return Module(new_body)
+    
+    def reveal_exp_functions(self, exp:expr, func_param_n_map:dict) -> expr:
+        pass
+
+    def reveal_stmt_functions(self, stm:stmt, func_param_n_map:dict) -> stmt:
+        match stm:
+            case Return(exp):
+                pass
 
     def replace_func_refs(self, p:FunctionDef, func_param_n_map:dict) -> FunctionDef:
         match p:
             case FunctionDef(name, args, body, _, ret_type, _):
                 new_body = []
-                for s in body:
-                    #TODO
-                    pass
+                # use map to iterate on the body
+                pass#TODO
                 return FunctionDef(name, args, new_body, None, ret_type, None)
 
     # create a new pass named reveal_functions that changes function references from Name(f ) to FunRef(f , n) where n is the arity of the function
