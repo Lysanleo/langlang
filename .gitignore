@@ -1,2 +1,6 @@
 **/__pycache__/
 /runtime.o
+.idea/langlang.iml
+.idea/modules.xml
+.idea/vcs.xml
+.idea/inspectionProfiles/profiles_settings.xml

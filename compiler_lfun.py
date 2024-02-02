@@ -73,6 +73,9 @@ class CompilerLfun(compiler_ltup.CompilerLtup):
             
             case Name(name) if name in func_param_n_map.keys():
                 return FunRef(name, func_param_n_map[name])
+
+            case Name(name):
+                return Name(name)
             
             case _:
                 raise Exception('compiler_lfun reveal_exp_functions: unexpected ' + repr(exp))
@@ -80,35 +83,58 @@ class CompilerLfun(compiler_ltup.CompilerLtup):
     def reveal_stmt_functions(self, stm:stmt, func_param_n_map:dict) -> stmt:
         match stm:
             case Expr(exp):
-                pass
-            case Assign(target, exp):
-                pass
-            case If(test, body_stmt, orelse_stmt):
-                pass
-            case While(test, body_stmt, orelse_stmt):
-                pass
+                new_exp = self.reveal_exp_functions(exp, func_param_n_map)
+                return Expr(new_exp)
+
+            case Expr(Call(Name('print'),[exp])):
+                new_exp = self.reveal_exp_functions(exp, func_param_n_map)
+                return Expr(Call(Name('print'),[new_exp]))
+
+            case Assign([Name(var)] as v, exp):
+                new_exp = self.reveal_exp_functions(exp, func_param_n_map)
+                return Assign(v, exp)
+
+            case If(test_exp, body_stmts, orelse_stmts):
+                new_test_exp = self.reveal_exp_functions(test_exp, func_param_n_map)
+                new_body_stmts = [self.reveal_stmt_functions(s, func_param_n_map) for s in body_stmts]
+                new_orelse_stmts = [self.reveal_stmt_functions(s, func_param_n_map) for s in orelse_stmts]
+                return If(new_test_exp, new_body_stmts, new_orelse_stmts)
+                
+            case While(test_exp, body_stmts, orelse_stmts):
+                new_test_exp = self.reveal_exp_functions(test_exp, func_param_n_map)
+                new_body_stmts = [self.reveal_stmt_functions(s, func_param_n_map) for s in body_stmts]
+                new_orelse_stmts = [self.reveal_stmt_functions(s, func_param_n_map) for s in orelse_stmts]
+                return While(new_test_exp, new_body_stmts, new_orelse_stmts)
             case Return(exp):
-                pass
+                new_exp = self.reveal_exp_functions(exp, func_param_n_map)
+                return Return(new_exp)
 
     def replace_func_refs(self, p:FunctionDef, func_param_n_map:dict) -> FunctionDef:
         match p:
             case FunctionDef(name, args, body, _, ret_type, _):
+                # add new func_param_n info according to args
+                # iterate on args, match the FunctionType and get the number of parameters, temporaly add this map to func_param_n_map
+                new_func_param_n_map = func_param_n_map.copy()
+                for (arg_name, arg_type) in args:
+                    if isinstance(arg_type, FunctionType):
+                        print(arg_name, arg_type)
+                        new_func_param_n_map[arg_name] = len(arg_type.param_types)
                 # use list comprehension to iterate on the body
-                new_body = [self.reveal_stmt_functions(s, func_param_n_map) for s in body]
+                new_body = [self.reveal_stmt_functions(s, new_func_param_n_map) for s in body]
                 return FunctionDef(name, args, new_body, None, ret_type, None)
-
+    
     # create a new pass named reveal_functions that changes function references from Name(f ) to FunRef(f , n) where n is the arity of the function
     def reveal_functions(self, p:Module) -> Module:
         match p:
             case Module(body):
+                # @semantic : func and its parameters number
                 func_param_n_map = {}
                 # user defined function map
                 for s in body:
                     if isinstance(s, FunctionDef):
                         func_param_n_map[s.name] = len(s.args)
                 new_body = [self.replace_func_refs(fundef, func_param_n_map) for fundef in body if isinstance(fundef, FunctionDef)]
-                return new_body
-
+                return Module(new_body)
 
     def limit_functions(self, p:Module) -> Module:
         match p:
