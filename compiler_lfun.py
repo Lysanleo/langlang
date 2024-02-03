@@ -123,23 +123,23 @@ class CompilerLfun(compiler_ltup.CompilerLtup):
                 new_body = [self.reveal_stmt_functions(s, new_func_param_n_map) for s in body]
                 return FunctionDef(name, args, new_body, None, ret_type, None)
     
+    func_param_n_map = {}
     # create a new pass named reveal_functions that changes function references from Name(f ) to FunRef(f , n) where n is the arity of the function
     def reveal_functions(self, p:Module) -> Module:
         match p:
             case Module(body):
                 # @semantic : func and its parameters number
-                func_param_n_map = {}
                 # user defined function map
                 for s in body:
                     if isinstance(s, FunctionDef):
-                        func_param_n_map[s.name] = len(s.args)
-                new_body = [self.replace_func_refs(fundef, func_param_n_map) for fundef in body if isinstance(fundef, FunctionDef)]
+                        self.func_param_n_map[s.name] = len(s.args)
+                new_body = [self.replace_func_refs(fundef, self.func_param_n_map) for fundef in body if isinstance(fundef, FunctionDef)]
                 return Module(new_body)
 
     def limit_functions(self, p:Module) -> Module:
         match p:
             case Module(body):
-               pass 
+               pass
 
     def remove_complex_operands(self, p:Module) -> Module:
         pass
