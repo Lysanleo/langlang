@@ -2,6 +2,7 @@ import compiler_ltup
 import pprint
 from itertools import filterfalse
 from ast import *
+from data_type import Temporaries
 from utils import *
 
 pp = pprint.PrettyPrinter()
@@ -206,7 +207,7 @@ class CompilerLfun(compiler_ltup.CompilerLtup):
                 raise Exception('compiler_lfun reveal_exp_functions: unexpected ' + repr(exp))
 
     
-    def limit_functions_rewrite_stmts(self, stm:stmt, args_idx:list[tuple[Name,int]]) -> stmt:
+    def limit_functions_rewrite_stmt(self, stm:stmt, args_idx:list[tuple[Name,int]]) -> stmt:
         match stm:
             case Expr(exp):
                 new_exp = self.limit_functions_rewrite_exp(exp, args_idx)
@@ -255,11 +256,11 @@ class CompilerLfun(compiler_ltup.CompilerLtup):
                 new_args.append(left_tup)
 
                 # args and idx in tup
-                args_idx_tup = [(n, i) for i, (n, _) in enumerate(args)]
+                args_idx_tup = [(n, i) for i, (n, _) in enumerate(args[5:])]
 
                 for s in body:
-                    new_s = self.limit_functions_rewrite_stmts(s, args_idx_tup)
-                    new_body.append(self.limit_functions_rewrite_stmts(s, args_idx_tup))
+                    new_s = self.limit_functions_rewrite_stmt(s, args_idx_tup)
+                    new_body.append(new_s)
                     
                 return FunctionDef(name, new_args, new_body, a, ret_type, b)
             # case _:
