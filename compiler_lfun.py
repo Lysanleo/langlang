@@ -343,6 +343,55 @@ class CompilerLfun(compiler_ltup.CompilerLtup):
                     new_defs.append(new_fundef)
                 return Module(new_defs)
 
+    ############################################################################
+    # Remove Complex Operands
+    ############################################################################
+
+    def rco_exp(self, e: expr, need_atomic: bool) -> tuple[expr, Temporaries]:
+        new_bindings = []
+        match e:
+            case FunRef(label, arity):
+                new_expr = e
+            case Call(func, args):
+                new_func, new_bindings = self.rco_exp(func, True)
+                new_args = []
+                for arg in args:
+                    new_exp_rcotp = self.rco_exp(arg, True)
+                    new_args.append(new_exp_rcotp[0])
+                    new_bindings.extend(new_exp_rcotp[1])
+                new_expr = Call(new_func, new_args)
+            case _:
+                return super().rco_exp(e, need_atomic)
+        return self.build_atomic_pair(need_atomic, new_expr, new_bindings)
+           
+    def rco_stmt(self, s: stmt) -> list[stmt]:
+        # use open recursion
+        # match match the new added AST element
+        match s:
+            case Return(exp):
+                # TODO I think the expression return should be atomic
+                # print(exp.__repr__())
+                new_exp = self.rco_exp(exp, True)
+                return [Return(new_exp)]
+            case _:
+                # open recursion
+                new_stmts = super().rco_stmt(s)
+                return new_stmts
+
+    def rco_def(self, s: stmt) -> list[stmt]:
+        match s:
+            case FunctionDef(name, args, body, a, ret_type, b):
+                new_body = []
+                for stmt in body:
+                    new_stmts = self.rco_stmt(stmt)
+                    new_body.extend(new_stmts)
+                return FunctionDef(name, args, new_body, a, ret_type, b)
+                    
     def remove_complex_operands(self, p:Module) -> Module:
-        pass
+        match p:
+            case Module(defs):
+                new_defs = [self.rco_def(s) for s in defs]
+                # print(new_body_temp == [None]) => True
+                # print(new_body)
+        return Module(new_defs)
 
