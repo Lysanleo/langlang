@@ -8,6 +8,10 @@ from utils import *
 pp = pprint.PrettyPrinter()
 
 class CompilerLfun(compiler_ltup.CompilerLtup):
+
+    ############################################################################
+    # Shrink Functions
+    ############################################################################
     def shrink(self, p:Module) -> Module:
         # pp.pprint(p)
         # print("\n")
@@ -24,6 +28,10 @@ class CompilerLfun(compiler_ltup.CompilerLtup):
                 new_body = defstmts + [FunctionDef('main', [], mainstmts+[Return(Constant(0))], None, IntType(),None)]
         return Module(new_body)
     
+    ############################################################################
+    # Reveal Functions
+    ############################################################################
+
     def reveal_exp_functions(self, exp:expr, func_param_n_map:dict) -> expr:
         match exp:
             case Constant(_):
@@ -110,6 +118,9 @@ class CompilerLfun(compiler_ltup.CompilerLtup):
             case Return(exp):
                 new_exp = self.reveal_exp_functions(exp, func_param_n_map)
                 return Return(new_exp)
+            
+            case _:
+                raise Exception('compiler_lfun reveal_stmt_functions: unexpected ' + repr(stm))
 
     def replace_func_refs(self, p:FunctionDef, func_param_n_map:dict) -> FunctionDef:
         match p:
@@ -126,6 +137,8 @@ class CompilerLfun(compiler_ltup.CompilerLtup):
                 # use list comprehension to iterate on the body
                 new_body = [self.reveal_stmt_functions(s, new_func_param_n_map) for s in body]
                 return FunctionDef(name, args, new_body, None, ret_type, None)
+            case _:
+                raise Exception('compiler_lfun replace_func_refs: unexpected ' + repr(p))
     
     func_param_n_map = {}
     # create a new pass named reveal_functions that changes function references from Name(f ) to FunRef(f , n) where n is the arity of the function
@@ -142,6 +155,10 @@ class CompilerLfun(compiler_ltup.CompilerLtup):
                         self.func_param_n_map[s.name] = len(s.args)
                 new_body = [self.replace_func_refs(fundef, self.func_param_n_map) for fundef in body if isinstance(fundef, FunctionDef)]
                 return Module(new_body)
+
+    ############################################################################
+    # limit functions
+    ############################################################################
 
     def limit_functions_rewrite_exp(self, exp: expr, arg_idx: list[tuple[Name,int]]) -> expr:
         match exp:
@@ -204,9 +221,8 @@ class CompilerLfun(compiler_ltup.CompilerLtup):
                 return Name(name)
             
             case _:
-                raise Exception('compiler_lfun reveal_exp_functions: unexpected ' + repr(exp))
-
-    
+                raise Exception('compiler_lfun limit_functions_rewrite_exp: unexpected ' + repr(exp))
+                
     def limit_functions_rewrite_stmt(self, stm:stmt, args_idx:list[tuple[Name,int]]) -> stmt:
         match stm:
             case Expr(exp):
@@ -232,9 +248,13 @@ class CompilerLfun(compiler_ltup.CompilerLtup):
                 new_body_stmts = [self.reveal_stmt_functions(s, args_idx) for s in body_stmts]
                 new_orelse_stmts = [self.reveal_stmt_functions(s, args_idx) for s in orelse_stmts]
                 return While(new_test_exp, new_body_stmts, new_orelse_stmts)
+
             case Return(exp):
                 new_exp = self.limit_functions_rewrite_exp(exp, args_idx)
                 return Return(new_exp)
+            
+            case _:
+                raise Exception('compiler_lfun limit_functions_rewrite_stmt: unexpected ' + repr(stm))
 
     # @semantic: FunctionDef(name, args, body, _, ret_type, _)
     #           -> FunctionDef(name, args', body', _, ret_type, _)
@@ -263,8 +283,9 @@ class CompilerLfun(compiler_ltup.CompilerLtup):
                     new_body.append(new_s)
                     
                 return FunctionDef(name, new_args, new_body, a, ret_type, b)
-            # case _:
-            #     raise Exception('compiler_lfun limit_functions_rewrite_body: unexpected ' + repr(funcdef))
+                
+            case _:
+                raise Exception('compiler_lfun limit_functions_rewrite_body: unexpected ' + repr(funcdef))
 
     def limit_functions(self, p:Module) -> Module:
         match p:
