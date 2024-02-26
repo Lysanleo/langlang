@@ -298,6 +298,51 @@ class CompilerLfun(compiler_ltup.CompilerLtup):
                         new_body.append(func)
                 return Module(new_body)
 
+    ############################################################################
+    # Expose Allocation
+    ############################################################################
+
+    def expose_allocation_rewrite_expr(self, e: expr) -> expr:
+        match e:
+            case FunRef(label, arity):
+                return e
+            case Call(func, args):
+                new_func = self.expose_allocation_rewrite_expr(func)
+                new_args = [self.expose_allocation_rewrite_expr(arg) for arg in args]
+                return Call(new_func, new_args)
+            case _:
+                return super().expose_allocation_rewrite_expr(e)
+
+    def expose_allocation_rewrite_stmt(self, s:stmt) -> stmt:
+        match s:
+            case Return(exp):
+                # print(f"expose_allocation_rewrite_stmt: {exp}")
+                new_exp = self.expose_allocation_rewrite_expr(exp)
+                return Return(new_exp)
+            case _:
+                return super().expose_allocation_rewrite_stmt(s)
+
+    def expose_allocation_rewrite_body(self, p:FunctionDef) -> FunctionDef:
+        match p:
+            case FunctionDef(name, args, body, a, ret_type, b):
+                new_body = []
+                for stmt in body:
+                    new_stmt = self.expose_allocation_rewrite_stmt(stmt)
+                    new_body.append(new_stmt)
+                return FunctionDef(name, args, new_body, a, ret_type, b)
+            case _:
+                raise Exception('compiler_lfun expose_allocation_rewrite_body: unexpected ' + repr(p))
+
+    # TODO Correctly handle the tuple creation
+    def expose_allocation(self, p: Module) -> Module:
+        match p:
+            case Module(defs):
+                new_defs = []
+                for fundef in defs:
+                    new_fundef = self.expose_allocation_rewrite_body(fundef)
+                    new_defs.append(new_fundef)
+                return Module(new_defs)
+
     def remove_complex_operands(self, p:Module) -> Module:
         pass
 
