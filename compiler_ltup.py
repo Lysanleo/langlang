@@ -39,7 +39,7 @@ class CompilerLtup(compiler_register_allocator.Compiler):
             
 
     # return (expr, length)
-    def handle_ltup_expr(self, e:expr) -> expr:
+    def expose_allocation_rewrite_expr(self, e:expr) -> expr:
         match e:
             # Trans to the L_alloc
             case Tuple(exprs, Load()):
@@ -62,7 +62,7 @@ class CompilerLtup(compiler_register_allocator.Compiler):
                 alloc_assign = Assign([alloc_name], Allocate(length, e.has_type))
                 # assign pairs
                 subscript_assign_pairs = [(Subscript(alloc_name, Constant(i), Store()), init_name) for i,init_name in inits.items()]
-                inits_assign_pairs = [(init_name, self.handle_ltup_expr(exprs[i])) for i,init_name in inits.items()]
+                inits_assign_pairs = [(init_name, self.expose_allocation_rewrite_expr(exprs[i])) for i,init_name in inits.items()]
                 # assign statements
                 init_assigns = make_assigns(inits_assign_pairs)
                 sub_assigns = make_assigns(subscript_assign_pairs)
@@ -75,59 +75,59 @@ class CompilerLtup(compiler_register_allocator.Compiler):
                 new_expr = Begin(cont_stmts, alloc_name)
                 self.add_length(new_expr.result, e)
             case BinOp(lhs_exp, op, rhs_exp):
-                new_lhs_exp = self.handle_ltup_expr(lhs_exp)
-                new_rhs_exp = self.handle_ltup_expr(rhs_exp)
+                new_lhs_exp = self.expose_allocation_rewrite_expr(lhs_exp)
+                new_rhs_exp = self.expose_allocation_rewrite_expr(rhs_exp)
                 new_expr = BinOp(new_lhs_exp, op, new_rhs_exp)
             case UnaryOp(op, rhs_exp):
-                new_rhs_exp = self.handle_ltup_expr(rhs_exp)
+                new_rhs_exp = self.expose_allocation_rewrite_expr(rhs_exp)
                 new_expr = UnaryOp(op, new_rhs_exp)
             case BoolOp(boolop, [exp1, exp2]):
-                new_exp1 = self.handle_ltup_expr(exp1)
-                new_exp2 = self.handle_ltup_expr(exp2)
+                new_exp1 = self.expose_allocation_rewrite_expr(exp1)
+                new_exp2 = self.expose_allocation_rewrite_expr(exp2)
                 new_expr = BoolOp(boolop, [new_exp1, new_exp2])
             case IfExp(cond_exp, then_exp, orelse_exp):
-                new_cond_exp = self.handle_ltup_expr(cond_exp)
-                new_then_exp = self.handle_ltup_expr(then_exp)
-                new_orelse_exp = self.handle_ltup_expr(orelse_exp)
+                new_cond_exp = self.expose_allocation_rewrite_expr(cond_exp)
+                new_then_exp = self.expose_allocation_rewrite_expr(then_exp)
+                new_orelse_exp = self.expose_allocation_rewrite_expr(orelse_exp)
                 new_expr = IfExp(new_cond_exp, new_then_exp, new_orelse_exp)
             case Compare(lhs_exp, [cmp], [rhs_exp]):
-                new_lhs_exp = self.handle_ltup_expr(lhs_exp)
-                new_rhs_exp = self.handle_ltup_expr(rhs_exp)
+                new_lhs_exp = self.expose_allocation_rewrite_expr(lhs_exp)
+                new_rhs_exp = self.expose_allocation_rewrite_expr(rhs_exp)
                 new_expr = Compare(new_lhs_exp, [cmp], [new_rhs_exp])
             case Subscript(exp, index_expr, ctx):
-                new_exp = self.handle_ltup_expr(exp)
-                new_index_expr = self.handle_ltup_expr(index_expr)
+                new_exp = self.expose_allocation_rewrite_expr(exp)
+                new_index_expr = self.expose_allocation_rewrite_expr(index_expr)
                 new_expr = Subscript(new_exp, new_index_expr, ctx)
             case Call(Name('len'), [exp]):
-                new_exp = self.handle_ltup_expr(exp)
+                new_exp = self.expose_allocation_rewrite_expr(exp)
                 # 首先len中的exp是可以被len的对象(这交由解释执行/tyck来保证)
                 # 将它转换过后的new_expr是一个C_tup中的term.
                 # 通过这种方法在这一阶段得到的length信息被使用的前提是: new_expr直到select_instruction中使用前
                 # 都不会有变动
                 new_expr = Call(Name('len'), [new_exp])
             case Call(Name('print'), [exp]):
-                new_exp = self.handle_ltup_expr(exp)
+                new_exp = self.expose_allocation_rewrite_expr(exp)
                 new_expr = Call(Name('print'), [new_exp])
             case _:
                 new_expr = e
         return new_expr
     
-    def handle_ltup_stmt(self, s:stmt) -> stmt:
+    def expose_allocation_rewrite_stmt(self, s:stmt) -> stmt:
         match s:
             case Expr(exp):
-                new_stmt = Expr(self.handle_ltup_expr(exp))
+                new_stmt = Expr(self.expose_allocation_rewrite_expr(exp))
             case While(cond_exp, bodystmts, []):
-                new_cond_exp = self.handle_ltup_expr(cond_exp)
-                new_bodystmts = [self.handle_ltup_stmt(stm) for stm in bodystmts]
+                new_cond_exp = self.expose_allocation_rewrite_expr(cond_exp)
+                new_bodystmts = [self.expose_allocation_rewrite_stmt(stm) for stm in bodystmts]
                 new_stmt = While(new_cond_exp, new_bodystmts, [])
             case If(cond_exp, then_stmts, orelse_stmts):
-                new_cond_exp = self.handle_ltup_expr(cond_exp)
-                new_then_stmts = [self.handle_ltup_stmt(stm) for stm in then_stmts]
-                new_orelse_stmts = [self.handle_ltup_stmt(stm) for stm in orelse_stmts]
+                new_cond_exp = self.expose_allocation_rewrite_expr(cond_exp)
+                new_then_stmts = [self.expose_allocation_rewrite_stmt(stm) for stm in then_stmts]
+                new_orelse_stmts = [self.expose_allocation_rewrite_stmt(stm) for stm in orelse_stmts]
                 new_stmt = If(new_cond_exp, new_then_stmts, new_orelse_stmts)
             case Assign([lhs_var_exp], rhs_exp):
                 # print(s)
-                new_rhs_exp = self.handle_ltup_expr(rhs_exp)
+                new_rhs_exp = self.expose_allocation_rewrite_expr(rhs_exp)
                 self.add_length(lhs_var_exp, new_rhs_exp)
                 new_stmt = Assign([lhs_var_exp], new_rhs_exp)
             case _:
@@ -138,7 +138,7 @@ class CompilerLtup(compiler_register_allocator.Compiler):
     def expose_allocation(self, p:Module) -> Module:
         match p:
             case Module(body):
-                new_body = [self.handle_ltup_stmt(s) for s in body]
+                new_body = [self.expose_allocation_rewrite_stmt(s) for s in body]
         return Module(new_body)
 
     ############################################################################
