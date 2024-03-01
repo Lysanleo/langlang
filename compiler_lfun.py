@@ -395,3 +395,26 @@ class CompilerLfun(compiler_ltup.CompilerLtup):
                 # print(new_body)
         return Module(new_defs)
 
+
+    def explicate_fun(self, p:FunctionDef) -> FunctionDef:
+        match p:
+            case FunctionDef(name, args, body, a, ret_type, b):
+                basic_blocks:dict[str, list[Expr]] = defaultdict(list)
+                # TODO TailCall(atm, atm*)
+                cont = [TailCall()]
+                new_body = self.iterate_on_stmts(body, cont, basic_blocks)
+                basic_blocks[name].extend(new_body)
+
+                return FunctionDef(name, args, basic_blocks, a, ret_type, b)
+            case _:
+                raise Exception('compiler_lfun explicate_fun: unexpected ' + repr(p))
+
+    # Module([def]) -> CprogramDefs([def])
+    def explicate_control(self, p:Module) -> CProgram:
+        match p:
+            case Module(defs):
+                new_defs = []
+                # TODO if defs need to wexectue reversed?
+                for s in defs:
+                    new_defs.append(self.explicate_fun(s))
+                return CProgramDefs(new_defs)
