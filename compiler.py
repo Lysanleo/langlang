@@ -124,7 +124,7 @@ class Compiler:
                 atm2 = self.rco_exp(ratm, True)
                 new_expr = Compare(atm1[0], [cmp], [atm2[0]])
                 new_bindings = atm1[1] + atm2[1]
-                print(new_bindings)
+                # print(new_bindings)
             case IfExp(e1, e2, e3):
                 atm1 = self.rco_exp(e1, False)
                 ss1 = self.rco_stmt(Expr(e2))
@@ -133,6 +133,8 @@ class Compiler:
                 new_expr = IfExp(atm1[0], Begin(ss1[0:len(ss1)-1], ss1[len(ss1)-1].value),
                                           Begin(ss2[0:len(ss1)-1], ss2[len(ss2)-1].value))
                 new_bindings = atm1[1]
+            case _:
+                raise ValueError(f"Unmatched expression in rco_exp: {e}")
         return self.build_atomic_pair(need_atomic, new_expr, new_bindings)
 
     def rco_stmt(self, s: stmt) -> list[stmt]:
@@ -200,13 +202,20 @@ class Compiler:
     # Explicate Control
     ############################################################################
 
+    # Python -> C
+    # Basically turn structure into basic blocks
+
     def create_block(
         self,
         stmts:List[stmt],
         basic_blocks:Dict[str,List[stmt]]
     ) -> List[stmt]:
+        '''
+        Create a new block for the stmts, and return a Goto statement to the new block.
+        If the stmts only a Goto, return the stmts directly.
+        '''
         match stmts:
-            case [Goto(l)]:
+            case [Goto(lb)]:
                 return stmts
             case _:
                 label = label_name(generate_name('block'))
@@ -219,6 +228,9 @@ class Compiler:
         cont:Stmts,
         basic_blocks:Dict[str,List[stmt]]
     ) -> Stmts:
+        '''
+        generates code for expressions as statements, so their result is ignored and only their side effects matter.
+        '''
         match e:
             case IfExp(test, body, orelse):
                 cont = self.create_block(cont, basic_blocks)
@@ -244,6 +256,9 @@ class Compiler:
         cont: Stmts,
         basic_blocks: BasicBlocks
     ) -> Stmts:
+        '''
+        generates code for expressions on the right-hand side of an assignment.
+        '''
         match rhs:
             case IfExp(test, body, orelse):
                 # Pack the stmt should be excuted after this assign as a block(?)
@@ -272,6 +287,9 @@ class Compiler:
         els,
         basic_blocks
     ) -> Stmts:
+        '''
+        generates code for an if expression or statement by analyzing the condition expression.
+        '''
         match cnd:
             case Compare(left, [op], [right]):
                 return [If(cnd, thn, els)] 
