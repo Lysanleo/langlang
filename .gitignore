@@ -4,3 +4,7 @@
 .idea/modules.xml
 .idea/vcs.xml
 .idea/inspectionProfiles/profiles_settings.xml
+flake-profile
+fleke-profile-1-link
+.direnv
+.envrc

@@ -130,49 +130,84 @@ interpLfun = interp_Lfun.InterpLfun().interp
 # interpCtup = interp_Ctup.InterpCtup().interp
 
 typecheck_function_dict = {
-    'shrink': typecheckLfun
+    'shrink': typecheckLfun,
+    'limit_functions': typecheckLfun,
+    'reveal_functions': typecheckLfun,
+    'expose_allocation': typecheckLfun
 }
 
 interp_function_dict = {
-    'shrink': interpLfun
+    'shrink': interpLfun,
+    'limit_functions': interpLfun,
+    'reveal_functions': interpLfun,
+    'expose_allocation': interpLfun
 }
+
+
+
+# -------------------------------
+
+# Test Options for Langl
+
+compile_infras = {
+    'var': {
+        'compiler': compiler,
+        'typecheck': typecheck_dict,
+        'interp': interp_dict
+    },
+    'if': {
+        'compiler': compiler_ra,
+        'typecheck': typecheck_if_dict,
+        'interp': interp_if_dict
+    },
+    'while': {
+        'compiler': compiler_ltup,
+        'typecheck': typecheck_while_dict,
+        'interp': interp_while_dict
+    },
+    'tuple': {
+        'compiler': compiler_ltup,
+        'typecheck': typecheck_tuple_dict,
+        'interp': interp_tuple_dict
+    },
+    'function': {
+        'compiler': compiler_lfun,
+        'typecheck': typecheck_function_dict,
+        'interp': interp_function_dict
+    }
+}
+
+# ---------------------------------
 
 if False:
     # single test
 
-    run_one_test(os.getcwd() + '/tests/var/zero.py',
-                 'var',
-                 compiler,
-                 'var',
-                 typecheck_dict,
-                 interp_dict)
+    # run_one_test(os.getcwd() + '/tests/var/zero.py',
+    #              'var',
+    #              compiler,
+    #              'var',
+    #              typecheck_dict,
+    #              interp_dict)
+    enable_tracing()
+                 
+    run_one_test(os.getcwd() + '/tests/if/multi_if_stmts_1.py',
+                 'if',
+                 compiler_ltup,
+                 'if',
+                 typecheck_tuple_dict,
+                 interp_tuple_dict)
 else:
     enable_tracing()
     enabled_test = [
-        #'if',
+        'if',
         #'var',
         #'while',
         #'tuple',
-        'function',
+        # 'function',
     ]
-
-    if ('if' in enabled_test):
-        run_tests('if', compiler_ra, 'if',
-                typecheck_if_dict,
-                interp_if_dict)
-    if ('var' in enabled_test):
-        run_tests('var', compiler_ra, 'var',
-                  typecheck_dict,
-                  interp_dict)
-    if ('while' in enabled_test):
-        run_tests('while', compiler_ltup, 'while',
-                  typecheck_while_dict,
-                  interp_while_dict)
-    if ('tuple' in enabled_test):
-        run_tests('tuple', compiler_ltup, 'tuple',
-                  typecheck_tuple_dict,
-                  interp_tuple_dict)
-    if ('function' in enabled_test):
-        run_tests('function', compiler_lfun, 'function',
-                  typecheck_function_dict,
-                  interp_function_dict)
+    
+    for test in enabled_test:
+        print(f"---------- Running {test} tests ----------")
+        run_tests(test, compile_infras[test]['compiler'], test,
+                  compile_infras[test]['typecheck'],
+                  compile_infras[test]['interp'])
